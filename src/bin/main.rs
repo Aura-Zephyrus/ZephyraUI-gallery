@@ -1,0 +1,1221 @@
+//! Gallery 宿主：三条路。
+//!
+//! 1. **窗口路**（默认）：winit + `zephyra-winit-d3d12::HostWindow`。
+//! 2. **`--dump-cpu`**：`zephyra_fx::cpu_only::CpuHost` 画第一帧写 BMP，
+//!    不开窗口、不碰 GPU —— 这是**像素级自验**手段（同一份样式表、同一条
+//!    `DisplayList → quad::expand` 链）。
+//! 3. **`--theme dark|light`**：起始主题意图。
+//!
+//! 自验开关（`--dump-cpu` 路）：`--route <id>` 选页、`--family <n>` 选参考族
+//! （`--list-routes` / `--list-families` 列出合法值）、`--lang <tag>` 强制语言、
+//! `--enter-ms <n>` 拨入场动画时钟。它们是同一件事的工具面：**没有宿主时，
+//! 让任意一屏都能被静态地画出来核对**。
+//!
+//! # 主题意图怎么到宿主
+//!
+//! View 住在 `HostWindow` 里面，拿不到直接引用。所以意图走一个
+//! `Arc<AtomicU8>`：View 点切换时翻它，`Bootstrap` 每帧 `about_to_wait`
+//! 对账一次，不一致就 `set_theme`。于是「想切的」与「在用的」始终可分开
+//! 观测 —— 不会出现"点了没反应也不知道为什么"。
+
+// 只被窗口路用（`intent_cell` + `Bootstrap`）⇒ 跟着「有没有宿主」走。
+// 不 gate 的话，在「本平台没有宿主」的状态下它们是未使用导入，而
+// `cargo clippy -- -D warnings` 会因此失败。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+use std::sync::Arc;
+
+use zephyra_core::theme::ThemeVariant;
+use zephyra_gallery::app::{
+    resolve_route, Gallery, MOUNTAIN_TEXTURE, REF_FAMILIES, ROUTES, SUPPORTED,
+};
+
+// `Styler` 只给 `HostWindow::set_styler` 用，与宿主是哪个后端无关 ——
+// 所以它的 gate 是「有没有窗口路」，而不是「哪个后端」。
+// `install()` 同时被 CPU 那几条路（`--bench` / `--dump-cpu`）调用，而那些路
+// 不开 cfg ⇒ `Styler` 必须无条件导入。
+use zephyra_core::styler::Styler;
+use zephyra_style::ir::StyleSheet;
+use zephyra_style::SheetStyler;
+
+/// 主题意图：0 = dark，1 = light。View 写、Bootstrap 读。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+fn intent_cell(dark: bool) -> Arc<AtomicU8> {
+    Arc::new(AtomicU8::new(if dark { 0 } else { 1 }))
+}
+
+/// 全局分配器探针 —— **注册为全局分配器**。
+///
+/// ⚠ `#[global_allocator]` 全进程只能有一个，所以**注册**只在这一行；
+///   实现在 lib 的 `zephyra_gallery::alloc_probe` 里。
+///
+///   ⚠ 千万别再用 `#[path = "../src/alloc_probe.rs"] mod alloc_probe;`
+///     把源码**复制**一份进来：那样 lib 与 bin 各有一份实现，而它们抢同一个
+///     全局分配器槽位 —— 实测 `E0759 conflicts with global allocator`，
+///     且症状（"probe 计数翻倍"）只在同时走两条路时显形。
+#[global_allocator]
+static ALLOC: zephyra_gallery::alloc_probe::Counting = zephyra_gallery::alloc_probe::Counting;
+
+use zephyra_gallery::alloc_probe;
+
+fn main() {
+    // 与 demo 同一套字体手法：自带 MiSans（含 CJK），编译期内嵌，
+    // 落地到临时文件后经环境变量让 zephyra-fx 选中它。
+    use_demo_font();
+
+    let args: Vec<String> = std::env::args().collect();
+    let want_light = args
+        .windows(2)
+        .any(|w| w[0] == "--theme" && w[1] == "light");
+
+    if args.iter().any(|a| a == "--list-routes") {
+        // 列出全部合法路由：拼错 id 时**立刻可见**，而不是静默回 home。
+        let routes = zephyra_gallery::app::list_routes();
+        eprintln!("[gallery] {} 条路由：", routes.len());
+        for r in &routes {
+            eprintln!("  {r}");
+        }
+        return;
+    }
+
+    if args.iter().any(|a| a == "--list-families") {
+        // 参考层两族的**下标 → 名字**。`--family` 收下标（名字不是稳定契约），
+        // 所以必须有一条命令把两者对上。
+        eprintln!("[gallery] {} 个参考族：", REF_FAMILIES.len());
+        for (i, f) in REF_FAMILIES.iter().enumerate() {
+            eprintln!("  {i}  {f}");
+        }
+        return;
+    }
+
+    if args.iter().any(|a| a == "--bench") {
+        bench_cpu(args.iter().any(|a| a == "--alloc-probe"), want_light);
+        return;
+    }
+
+    if args.iter().any(|a| a == "--bench-resize") {
+        // resize 路径单独一个模式：现有 --bench 测的是稳态（layout 根本不跑），
+        // 那一组数字对「拖窗口边慢不慢」一个字都说不出。
+        bench_resize(args.iter().any(|a| a == "--alloc-probe"), want_light);
+        return;
+    }
+
+    if args.iter().any(|a| a == "--dump-cpu") {
+        dump_cpu(want_light);
+        return;
+    }
+
+    // 三个分支**各自独立**，不共用代码：本仓两个 Windows 后端也是分开的，
+    // 理由见 `zephyra-winit-d3d12/Cargo.toml` 的文件头（两套写法揉进一处 `#[cfg]`
+    // 会让「画面一空时是哪个后端的问题」变得无法回答）。
+    #[cfg(all(windows, feature = "d3d12"))]
+    {
+        run_window_path(want_light);
+    }
+    #[cfg(all(not(windows), feature = "linux-vk"))]
+    {
+        run_window_path(want_light);
+    }
+    #[cfg(not(any(
+        all(windows, feature = "d3d12"),
+        all(not(windows), feature = "linux-vk")
+    )))]
+    {
+        eprintln!(
+            "[gallery] 需要一个后端特性才能开窗口（d3d12 / d3d11 / linux-vk）；\
+             或用 --dump-cpu（不开窗口，CPU 参考图）"
+        );
+    }
+}
+
+/// 窗口路：建事件循环、跑自举宿主。
+///
+/// # 为什么按后端各写一份而不是只写一份
+///
+/// `Bootstrap` 的类型随宿主变（`zephyra_winit_d3d12::HostWindow` vs
+/// `zephyra_winit_vk::HostWindow`），而 `run_app` 要一个**具体**类型。把它写成
+/// 泛型 + trait 会引入一层「宿主接口」抽象 —— 而那正是本仓刻意不引入的东西：
+/// 三个后端各有各的事件与呈现语义，一层薄 trait 只会把差异藏进动态派发。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+fn run_window_path(want_light: bool) {
+    // 多窗口演示走另一条自举路（`WindowSet`）。默认仍是单窗口，保证既有行为不变。
+    #[cfg(any(
+        all(windows, feature = "d3d12"),
+        all(not(windows), feature = "linux-vk")
+    ))]
+    if std::env::args().any(|a| a == "--multi-window") {
+        return run_multi_window_path(want_light);
+    }
+    let event_loop = winit::event_loop::EventLoop::new().expect("EventLoop::new");
+    let theme = intent_cell(!want_light);
+    let mut view = Gallery::with_theme_intent(theme.clone(), !want_light);
+
+    // `--route <id>`：窗口路的起始路由。
+    //
+    // ⚠⚠ 这一段是**漏掉过**的。`--route` 原本只在 [`dump_cpu`] 里被消费，而
+    // `run_window_path` 压根不读它 —— 于是「`--route effects` 跑窗口路」与
+    // 「`--route home` 跑窗口路」画出来是**同一张图**。
+    //
+    // 它特别难自己暴露，因为窗口路没有出图产物：两次跑都得肉眼盯着同一个窗口，
+    // 而起始路由差异往往要翻导航才看得到。所以凡是「同一份输入、两种模式」，
+    // 参数就必须在**两边**都解析 —— 这条比参数本身重要。
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(route) = flag_value(&args, "--route") {
+        // 解析走 `resolve_route`（应用层唯一真源），且**未知路由直接退出**。
+        //
+        // 不静默回落 home 的理由与 `dump_cpu` 同款：出图/调试工具静默给错内容，
+        // 比直接失败恶劣得多 —— 而窗口路连日志都没有，画面上「看起来能跑」。
+        let Some(resolved) = resolve_route(route) else {
+            eprintln!("[gallery] 未知路由 {route:?}；用 --list-routes 看全部合法值");
+            std::process::exit(2);
+        };
+        view.route = resolved;
+    }
+    // `--family <n>`：窗口路的起始参考族（`reference` 页里切哪一族）。
+    //
+    // ⚠ 与 `--route` 同款理由：参数必须**两边都解析**。`--family` 原本只在
+    // [`dump_cpu`] 里被消费，窗口路读不到 —— 于是「`--route reference
+    // --family 1`」开窗口，看到的仍是第 0 族（basics）。
+    //
+    // 这一条对**无障碍**尤其要紧：复选框组在 `checkbox` 族里，要验 UIA 的
+    // 树就必须能开到那一族。
+    if let Some(fam) = flag_value(&args, "--family") {
+        match fam.parse::<usize>() {
+            Ok(n) if n < REF_FAMILIES.len() => view.ref_family = n,
+            Ok(_n) => {
+                eprintln!(
+                    "[gallery] --family 要 0..{} 的整数；族名见 --list-families",
+                    REF_FAMILIES.len() - 1
+                );
+                std::process::exit(2);
+            }
+            Err(_) => {
+                eprintln!("[gallery] --family 要整数；族名见 --list-families");
+                std::process::exit(2);
+            }
+        }
+    }
+    // `--lang <tag>`：强制语言（**窗口路也必须解析**）。
+    //
+    // ⚠ 与 `--route` / `--family` 同款理由：参数必须**两边都解析**。
+    // `--lang` 原本只在 [`dump_cpu`] 里被消费，窗口路读不到 —— 于是
+    // 「`--lang en` 开窗口」看到的仍是系统语言（本机是 zh-Hans），
+    // 而命令行说的是「强制」。
+    //
+    // 这一条对**验 i18n** 尤其要紧：中日文能不能在真窗口里看对，只有
+    // 走窗口路才验得到（dump 路不读系统字形）。
+    apply_forced_language(&args, &mut view);
+
+    let mut app = Bootstrap {
+        inner: None,
+        view: Some(view),
+        theme,
+    };
+    if let Err(e) = event_loop.run_app(&mut app) {
+        eprintln!("事件循环退出：{e}");
+    }
+}
+
+/// 多窗口演示：主窗口 + 一个 owned 的工具窗口。
+///
+/// # 演示了什么
+///
+/// - **动态建窗**：两个窗口都在 `on_start` 里通过 `WindowSet::create_window` 建；
+/// - **独立 View**：每个窗口一个 `Gallery` 实例（各自的内容树 / 输入 / 焦点）；
+/// - **共享状态**：两个实例共用同一个 `Arc<AtomicU8>` 主题意图，且纹理表在
+///   `Shared` 里 —— 主窗口注册的背景照片，工具窗口直接可用；
+/// - **owned 级联**：工具窗口 `owner` 指向主窗口，关主窗口时它跟着关；
+/// - **最后窗口退出**：`ShutdownMode::OnLastWindowClosed`。
+///
+/// 用 `--multi-window` 开启（默认仍是单窗口路，保证既有行为不变）。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+fn run_multi_window_path(want_light: bool) {
+    use std::sync::atomic::AtomicBool;
+    #[cfg(all(not(windows), feature = "linux-vk"))]
+    use zephyra_vulkan::VulkanBackend;
+    use zephyra_window::{ShutdownMode, WindowSet, WindowSpec};
+    #[cfg(all(windows, feature = "d3d12"))]
+    use zephyra_winit_d3d12::D3d12Backend;
+
+    // 与单窗口路同一个理由：配置按 cwd 解析，直接用 env 钉住无边框。
+    std::env::set_var("ZEPHYRA_FRAMELESS", "1");
+
+    let theme = intent_cell(!want_light);
+    let light_intent = Arc::new(AtomicBool::new(want_light));
+    let (w, h) = (
+        zephyra_gallery::app::shell::CANVAS_W as u32,
+        zephyra_gallery::app::shell::CANVAS_H as u32,
+    );
+
+    #[cfg(all(windows, feature = "d3d12"))]
+    let backend = D3d12Backend::new();
+    #[cfg(all(not(windows), feature = "linux-vk"))]
+    let backend = VulkanBackend::new();
+    let mut set = WindowSet::new(backend, ShutdownMode::OnLastWindowClosed);
+
+    // 主题对账：只在意图真的变了时才广播（否则每 tick 都换主题 = 每 tick 重画）。
+    // 初始值用 `None`（而不是 `want_light`）：第一次 tick 必须广播一次，否则
+    // 「`--theme light` 开多窗口」会停在宿主默认的暗色上。
+    let tick_intent = light_intent.clone();
+    let mut applied_light: Option<bool> = None;
+    set.set_tick_handler(move |set, _event_loop| {
+        let light = tick_intent.load(Ordering::Relaxed);
+        if applied_light != Some(light) {
+            applied_light = Some(light);
+            set.set_theme_all(if light {
+                ThemeVariant::Light
+            } else {
+                ThemeVariant::Dark
+            });
+        }
+    });
+
+    let main_theme = theme.clone();
+    let side_theme = theme.clone();
+    set.set_start_handler(move |set, event_loop| {
+        // ---- 主窗口 ----
+        let main_view = Gallery::with_theme_intent(main_theme, !want_light);
+        let main = set
+            .create_window(event_loop, WindowSpec::main().size(w, h), move |_| {
+                main_view
+            })
+            .expect("创建主窗口");
+        let main_key = main.key();
+        {
+            let host = set.host_mut(main_key).expect("主窗口刚建").as_any_mut();
+            let app = host
+                .downcast_mut::<Host>()
+                .expect("主窗口的宿主类型是 HostWindow<Gallery>");
+            register_mountain(app);
+            app.set_styler(install(build_sheet()));
+            let _ = app.apply_window_chrome(zephyra_platform::WindowChrome {
+                dark: true,
+                corner: zephyra_platform::CornerPreference::Round,
+                caption_color: None,
+                border_color: None,
+            });
+            // UIA 是 Windows 专属；Linux 后端没有对应物，也不该放空壳。
+            #[cfg(windows)]
+            if let Err(e) = app.enable_uia() {
+                eprintln!("[gallery] 主窗口装不上无障碍（UIA）: {e}");
+            }
+        }
+        // 首帧已经在 `start()` 里画过了，但那时还没装样式表 / 纹理 —— 要一帧。
+        set.host_mut(main_key).expect("主窗口").request_redraw();
+
+        // ---- 工具窗口（Inspector）----
+        let side_view = Gallery::with_theme_intent(side_theme, !want_light);
+        let inspector = set
+            .create_window(
+                event_loop,
+                WindowSpec::named("inspector")
+                    .owner(main_key)
+                    .tool_window()
+                    .size(560, 720),
+                move |_| side_view,
+            )
+            .expect("创建 Inspector 窗口");
+        let inspector_key = inspector.key();
+        {
+            let host = set
+                .host_mut(inspector_key)
+                .expect("Inspector 刚建")
+                .as_any_mut();
+            let app = host
+                .downcast_mut::<Host>()
+                .expect("Inspector 的宿主类型是 HostWindow<Gallery>");
+            app.set_styler(install(build_sheet()));
+            let _ = app.apply_window_chrome(zephyra_platform::WindowChrome {
+                dark: true,
+                corner: zephyra_platform::CornerPreference::Round,
+                caption_color: None,
+                border_color: None,
+            });
+        }
+        set.host_mut(inspector_key)
+            .expect("Inspector")
+            .request_redraw();
+
+        eprintln!(
+            "[gallery] 多窗口：主窗口 {} + Inspector {}（关主窗口时 Inspector 跟随关闭）",
+            main_key.as_u64(),
+            inspector_key.as_u64()
+        );
+    });
+
+    let event_loop = winit::event_loop::EventLoop::new().expect("EventLoop::new");
+    if let Err(e) = event_loop.run_app(&mut set) {
+        eprintln!("事件循环退出：{e}");
+    }
+}
+
+/// 打印一帧的渲染报告——前 5 帧。
+///
+/// # 为什么需要它
+///
+/// 拟合是本仓最容易无声失败的能力：它的**默认外观与「没接上」几乎一样**
+/// （半透明的玻璃盖在原图上），而且**不报错、不崩、不出 warn**。
+///
+/// 所以“管线到了没到”必须由一个**正面计数**回答，而不能靠看图。
+/// `RenderReport::refraction_passes` 就是那个计数：它只在真的走了
+/// `PSRefraction` 那一支时才加，拿不到目标副本、退化成普通合成时**不加**。
+///
+/// # 为什么只打前 5 帧
+///
+/// `frame()` 只在 `dirty` 时被调用，一帧跑完 `dirty` 立刻归零 —— 静止的
+/// gallery 总共只渲染那么几帧。持续打会变成一面墙。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+fn report_frame(tag: &str, frame: &zephyra_fx::Frame) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    if n >= 5 {
+        return;
+    }
+    let r = &frame.render;
+    eprintln!(
+        "[gallery] {tag}#{n} redrawn={} quads={} offscreen={} refraction={} lens={}          unimplemented_filters={} unimplemented_blends={} skipped={}",
+        frame.redrawn,
+        r.quads,
+        r.offscreen_passes,
+        r.refraction_passes,
+        r.lens_passes,
+        r.unimplemented_filters,
+        r.unimplemented_blends,
+        r.skipped,
+    );
+}
+
+/// 解析并合并全部样式表 —— 控件层（`zephyra_ui::STYLESHEETS`）+ 本应用自己的。
+///
+/// # 为什么不再 `read_dir`
+///
+/// 旧版本在运行时扫自己的 crate 目录。拆成两个 crate 之后那条路走不通了：
+/// 控件层的样式表在**另一个目录**，而让它「也在运行时被扫到」等于让
+/// 应用知道库的物理布局 —— 那正是拆开要消除的东西。
+///
+/// 顺带消掉一个失败模式：旧路径下「发布二进制时漏拷 `.zstyle`」会让控件
+/// **静默**退回默认外观（零报错）。现在样式在编译期由 `include_str!`
+/// 读进二进制，漏拷变成**编译错误**。
+fn build_sheet() -> StyleSheet {
+    let mut sheet = StyleSheet::new();
+    for (name, css) in zephyra_gallery::styles::all() {
+        let result = zstyle_compile::parse(name, css);
+        if !result.is_ok() {
+            for e in &result.errors {
+                eprintln!("{e}\n");
+            }
+            eprintln!(
+                "[gallery] {name}.zstyle has {} error(s) -- skipping it, the rest still load",
+                result.errors.len()
+            );
+            continue;
+        }
+        eprintln!(
+            "[gallery] {name}.zstyle: {} rules",
+            result.sheet.rules().len()
+        );
+        sheet = sheet.merge(result.sheet);
+    }
+    eprintln!("[gallery] loaded {} rules in total", sheet.rules().len());
+    sheet
+}
+
+/// 把整份样式表装成宿主的样式注入点。
+fn install(sheet: StyleSheet) -> Box<dyn Styler> {
+    Box::new(SheetStyler::new(std::sync::Arc::new(sheet)))
+}
+
+/// 分阶段计时 + 分配探针。
+///
+/// bench 的价值全在**可比**：改动时别把「测的东西」换掉 ——
+/// 换掉的不是数字不可比，是这个数字不再说明任何事。
+fn bench_cpu(probe: bool, light: bool) {
+    /// 参与统计的帧数。
+    const FRAMES: usize = 120;
+    /// 丢弃的开头帧数（字体解析、图集首次打包、树首次构建都在这几帧里）。
+    const WARMUP: usize = 12;
+
+    let (w, h) = (1400u32, 800u32);
+    let mut host = zephyra_fx::cpu_only::CpuHost::new(Gallery::default(), (w, h));
+    // 装样式表：否则量的是无规则树，不是本应用。
+    host.set_styler(install(build_sheet()));
+    if light {
+        host.set_theme(ThemeVariant::Light);
+    }
+
+    // 探针只数分配，不改耗时结论 —— 它的原子操作会把绝对耗时抬高。
+    let mut before = alloc_probe::Counts::now();
+    // 直方图只在采样窗口里累加：`reset` 放在 `WARMUP` 之后的头一帧之前，
+    // 这样它量的是**稳态**帧的分配构成，不掺首次构建的那些。
+    let mut histogram_ready = false;
+
+    let mut samples: Vec<zephyra_fx::cpu_only::StageTimes> = Vec::with_capacity(FRAMES);
+    let mut alloc_samples: Vec<(u64, u64)> = Vec::new();
+    let mut last = None;
+    for i in 0..FRAMES {
+        if probe {
+            if i == WARMUP {
+                alloc_probe::reset_histogram();
+                histogram_ready = true;
+            }
+            before = alloc_probe::Counts::now();
+        }
+        let (frame, t) = host.frame_timed();
+        if probe && i >= WARMUP {
+            let d = alloc_probe::Counts::now().since(&before);
+            alloc_samples.push((d.allocs, d.bytes));
+        }
+        last = Some(frame);
+        if i >= WARMUP {
+            samples.push(t);
+        }
+    }
+
+    if probe && !alloc_samples.is_empty() {
+        let mut counts: Vec<u64> = alloc_samples.iter().map(|(a, _)| *a).collect();
+        let mut sizes: Vec<u64> = alloc_samples.iter().map(|(_, b)| *b).collect();
+        counts.sort_unstable();
+        sizes.sort_unstable();
+        println!(
+            "[bench] 每帧分配：中位 {} 次 / {} 字节，最大 {} 次 / {} 字节（全局最大单次 {}）",
+            counts[counts.len() / 2],
+            sizes[sizes.len() / 2],
+            counts[counts.len() - 1],
+            sizes[sizes.len() - 1],
+            alloc_probe::Counts::now().max_one,
+        );
+        if histogram_ready {
+            // 只印构成里权重最大的几桶：全印出来会把"18 次 × 32 字节"这种噪声
+            // 与"3 次 × 30KB"这种真问题混在一起，看不出哪个该修。
+            let mut h = alloc_probe::histogram();
+            h.sort_by_key(|&(_, _, bytes)| std::cmp::Reverse(bytes));
+            let per_frame = (FRAMES - WARMUP) as f64;
+            println!("[bench] 分配大小分布（按每帧字节降序，次数已除以采样帧数）：");
+            for (hi, n, bytes) in h.iter().take(10) {
+                println!(
+                    "[bench]   ≤ {hi:>6} 字节：每帧 {:>7.1} 次  {:>9.1} 字节",
+                    *n as f64 / per_frame,
+                    *bytes as f64 / per_frame,
+                );
+            }
+        }
+    }
+
+    // 中位数而不是平均值：单帧会被 OS 抢占 / 页错误污染，而平均值会把那几毫秒
+    // 摊薄到看不出来。中位数只反映**典型**帧 —— 那才是决定手感的东西。
+    fn median(xs: &mut [u32]) -> u32 {
+        xs.sort_unstable();
+        xs[xs.len() / 2]
+    }
+    fn report(name: &str, mut xs: Vec<u32>, total: u64) {
+        xs.sort_unstable();
+        let med = median(&mut xs.clone());
+        let max = *xs.last().unwrap_or(&0);
+        let pct = if total == 0 {
+            0.0
+        } else {
+            med as f64 / total as f64 * 100.0
+        };
+        println!("[bench] {name:<8} 中位 {med:>6} µs  最大 {max:>6} µs  占比 {pct:>5.1}%");
+    }
+
+    let frame = last.expect("FRAMES > 0");
+    println!(
+        "[bench] {} 帧（丢弃开头 {} 帧），{}×{}；四边形 {}、顶点 {}",
+        FRAMES,
+        WARMUP,
+        w,
+        h,
+        frame.render.quads,
+        host.batch().solid.len(),
+    );
+    // 各阶段的占比之和是判据：它应当约等于 100%。明显小于 100% 说明**有阶段没被
+    // 计时**（计时点之间漏了代码），那时"占比"这列数字会误导 —— 所以直接印出来。
+    //
+    // ⚠ 这里加的是 `view_us + cache_us + expand_us`，**不是**把五个分段全加起来：
+    // `cache_us`（`FrameCache::frame` 整体）**已经包含** diff / style / scan /
+    // layout / paint 五段。全加起来会把 core 那部分**算两遍**，于是「占比之和」
+    // 会大于 100% —— 而这份报表原先恰恰是**小于** 100%（62%），因为它加的是
+    // 恒为 0 的 diff / layout / paint，漏掉了 `cache_us`。
+    //
+    // 那个 62% 一直在那儿没人管：读的人以为「38% 的帧时间没被计时」，于是去找
+    // 「漏掉的代码」—— 而那 38% 就是 `cache_us`（core 的整段）。
+    let sum: u64 = samples.iter().map(|s| s.sum() as u64).sum();
+    let sum_total: u64 = samples.iter().map(|s| s.total_us as u64).sum();
+    let accounted = if sum_total == 0 {
+        0.0
+    } else {
+        sum as f64 / sum_total as f64 * 100.0
+    };
+    report(
+        "合计",
+        samples.iter().map(|s| s.total_us).collect(),
+        sum_total,
+    );
+    report("view", samples.iter().map(|s| s.view_us).collect(), sum);
+    report("cache", samples.iter().map(|s| s.cache_us).collect(), sum);
+    report("diff", samples.iter().map(|s| s.diff_us).collect(), sum);
+    report("style", samples.iter().map(|s| s.style_us).collect(), sum);
+    report("scan", samples.iter().map(|s| s.scan_us).collect(), sum);
+    report("layout", samples.iter().map(|s| s.layout_us).collect(), sum);
+    report("paint", samples.iter().map(|s| s.paint_us).collect(), sum);
+    report("expand", samples.iter().map(|s| s.expand_us).collect(), sum);
+    println!(
+        "[bench] 各阶段之和 / 合计 = {accounted:.1}%（应当 ≈100%；明显小于 100 说明有代码没被计时）"
+    );
+}
+/// 无窗口像素自验：CPU 上画第一帧，写 BMP + 打统计。
+///
+/// 为什么要看统计而不是只看图：图只能看"像不像"，统计能看"链路通不通" ——
+/// 四边形数、字形数、被跳过的纹理数，每一项都对应一段可能静默失败的代码。
+/// 取 `--flag value` 形式的值；没有该 flag 时 `None`。
+///
+/// # 为什么不用 `skip_while`（`--route` 现在就是这么取的）
+///
+/// `skip_while(|a| a != "--route").nth(1)` 在**没有**该 flag 时会返回
+/// 最后一个参数 —— 于是 `--lang` 不存在时拿到的是别的 flag 的值，
+/// 而那正好是一个合法的语言标签时会静默生效。这个助手用 `position` 定位，
+/// 找不到就是 `None`，没有这种歧义。
+fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    let i = args.iter().position(|a| a == flag)?;
+    args.get(i + 1).map(|s| s.as_str())
+}
+
+/// `--lang <tag>`：**强制**语言。**两条路（窗口 / dump）都必须调它。**
+///
+/// # 为什么必须是同一个函数
+///
+/// `--route` 与 `--family` 都已经因为「只在一边解析」栽过（见 `run_window_path`
+/// 里那两处的注释）。`--lang` 是同一个坑的第三次机会 —— 而且它恰好是**最
+/// 需要在窗口路生效**的那个：它的用途正是「在本机（系统语言 zh-Hans）看
+/// 另一种语言」，只生效在 dump 路的话，就只能看静态图、看不了真窗口。
+///
+/// # 为什么要走 `force_language` 而不是直接改 `lang`
+///
+/// 窗口路第一帧会做**系统语言协商**（`Gallery::on_input`），它会把 `lang`
+/// 改回系统那个。`force_language` 同时把「已协商」置真，于是强制生效。
+///
+/// 未知语言**报错退出**，不静默回落：静默回落给出一屏英文，而那看起来
+/// 像「功能没接上」。
+fn apply_forced_language(args: &[String], view: &mut Gallery) {
+    let Some(tag) = flag_value(args, "--lang") else {
+        return;
+    };
+    let Some(idx) = SUPPORTED.iter().position(|s| *s == tag) else {
+        eprintln!("[gallery] 未知语言 {tag:?}；可用：{}", SUPPORTED.join(" "));
+        std::process::exit(2);
+    };
+    view.force_language(idx);
+}
+
+/// 逐帧改视口的计时 —— resize 路径的实测。
+///
+/// # 为什么单独一个模式而不是给 `--bench` 加个参数
+///
+/// 现有 `--bench` 测的是**稳态**：输入不变，`diff` 报 no-op、`layout` 根本不跑。
+/// 那条路径在优化之前就已经是 0 µs，所以它对"resize 慢不慢"**一个字都说不出**。
+///
+/// resize 是另一回事：视口每帧都变 ⇒ 视口比��失败 ⇒ `layout` 每帧都跑。
+/// 而且它有两个**方向**，代价差得很远：
+///
+/// - **改宽度**（交叉轴）⇒ 子项的交叉轴约束变了 ⇒ 必须重测（文本会重排）；
+/// - **改高度**（堆叠轴）⇒ 官方 StackPanel 在堆叠轴给无穷约束
+///   （`StackPanel.cpp:24-30`），于是子项约束**一个字都没变** ⇒ 整棵子树跳过测量。
+///
+/// 把两者分开报，才看得出"哪一半已经便宜了、哪一半还贵"。
+///
+/// # 数字怎么读
+///
+/// 中位数。resize 的耗时分布是**双峰**的（一半高度变化几乎免费、一半宽度变化
+/// 全量重排），平均值会把两件事抹平。
+fn bench_resize(probe: bool, light: bool) {
+    /// 参与统计的帧数。
+    const FRAMES: usize = 120;
+    /// 丢弃开头几帧（字体解析、图集首次打包、树首次构建）。
+    const WARMUP: usize = 12;
+
+    let (w, h) = (1400u32, 800u32);
+    let mut host = zephyra_fx::cpu_only::CpuHost::new(Gallery::default(), (w, h));
+    host.set_styler(install(build_sheet()));
+    if light {
+        host.set_theme(ThemeVariant::Light);
+    }
+
+    // 三个方向**分别**测。把宽高一起摆会互相抵消：宽度变化必然让整棵子树重测，
+    // 于是"高度变化几乎免费"那部分被完全淹掉 —— 实测混在一起时
+    // 507~586 µs，看不出任何双峰，而拆开之后差距是两个数量级。
+    //
+    // 宽度摆 ±42 DIP（周期 13，相邻帧必变）；高度摆 ±40 DIP（周期 17）。
+    let run = |label: &str, move_w: bool, move_h: bool| {
+        let mut host = zephyra_fx::cpu_only::CpuHost::new(Gallery::default(), (w, h));
+        host.set_styler(install(build_sheet()));
+        if light {
+            host.set_theme(ThemeVariant::Light);
+        }
+        let mut cache: Vec<u32> = Vec::with_capacity(FRAMES);
+        let mut total: Vec<u32> = Vec::with_capacity(FRAMES);
+        // 分段：resize 路径上 `layout` 与 `paint` 真的跑，而**哪一段更贵**
+        // 决定了优化该往哪走（重排 vs 文字重排）。
+        //
+        // 用数组而不是元组：元组不支持 `Index`，按下标取会写不成。
+        let mut by_stage: Vec<[u32; 5]> = Vec::with_capacity(FRAMES);
+        let mut before = alloc_probe::Counts::now();
+        let mut probing = false;
+        for i in 0..FRAMES {
+            let t = i as i32;
+            let nw = if move_w {
+                (w as i32 + (t % 13) * 7 - 42).clamp(640, 2400) as u32
+            } else {
+                w
+            };
+            let nh = if move_h {
+                (h as i32 + (t % 17) * 5 - 40).clamp(480, 1600) as u32
+            } else {
+                h
+            };
+            host.resize((nw, nh));
+            if probe && i == WARMUP {
+                alloc_probe::reset_histogram();
+                before = alloc_probe::Counts::now();
+                probing = true;
+            }
+            let (_frame, times) = host.frame_timed();
+            if i >= WARMUP {
+                cache.push(times.cache_us);
+                total.push(times.total_us);
+                by_stage.push([
+                    times.diff_us,
+                    times.style_us,
+                    times.scan_us,
+                    times.layout_us,
+                    times.paint_us,
+                ]);
+            }
+        }
+        if probing {
+            let d = alloc_probe::Counts::now().since(&before);
+            let per = (FRAMES - WARMUP) as f64;
+            println!(
+                "[resize:{label}] 每帧分配：中位 {:.1} 次 / {:.0} 字节",
+                d.allocs as f64 / per,
+                d.bytes as f64 / per
+            );
+            let mut hh = alloc_probe::histogram();
+            hh.sort_by_key(|&(_, _, bytes)| std::cmp::Reverse(bytes));
+            for (hi, n, bytes) in hh.iter().take(5) {
+                println!(
+                    "[resize:{label}]   {:>9} B × {:>5.1} = {:>8.0} B/帧",
+                    hi,
+                    *n as f64 / per,
+                    *bytes as f64 / per
+                );
+            }
+        }
+        cache.sort_unstable();
+        total.sort_unstable();
+        let n = cache.len();
+        println!(
+            "[resize:{label}] layout+diff+paint 中位 {:>4} µs（最小 {:>4} / 最大 {:>4}），整帧中位 {:>4} µs",
+            cache[n / 2], cache[0], cache[n - 1], total[n / 2]
+        );
+        // 分段中位数。⚠ 用**中位数**而不是平均：resize 的耗时分布是双峰的，
+        // 平均值会把「宽度变化全量重排」与「高度变化几乎免费」抹成同一个数
+        // （实测三者都是 80 µs —— 抹平后的数字看不出该优化哪一段）。
+        for (name, pick) in [
+            ("diff", 0usize),
+            ("style", 1),
+            ("scan", 2),
+            ("layout", 3),
+            ("paint", 4),
+        ] {
+            let mut xs: Vec<u32> = by_stage.iter().map(|s| s[pick]).collect();
+            xs.sort_unstable();
+            println!(
+                "[resize:{label}]   {name:<7} 中位 {:>4} µs  最大 {:>4} µs",
+                xs[xs.len() / 2],
+                xs[xs.len() - 1]
+            );
+        }
+    };
+
+    run("只改高度", false, true);
+    run("只改宽度", true, false);
+    run("宽高都改", true, true);
+    println!("[resize] 全部为 {FRAMES} 帧（丢弃开头 {WARMUP} 帧）的**中位数**；resize 的耗时分布是双峰的，平均值会把两件事抹平。");
+}
+
+fn dump_cpu(light: bool) {
+    let args: Vec<String> = std::env::args().collect();
+    // `--route <id>`：dump 指定页（默认第一条路由）。逐页像素自验用 ——
+    // 否则只有第一页能被看到，后面几页的样式错误要等窗口路才暴露。
+    //
+    // 默认值取 `ROUTES[0]` 而不是字面量：路由表改名时（home → guide 那次）
+    // 字面量会静默失效，dump 路直接以「未知路由」退出 —— 出图工具悄悄坏了。
+    let route = flag_value(&args, "--route")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| ROUTES[0].0.to_string());
+
+    // 路由解析走 `resolve_route`（应用层唯一真源），**不做白名单 match**。
+    //
+    // ⚠️ 之前这里是 10 个字面量的 `match`，其余一律 `_ => "home"`。于是
+    // `--route Button` / `--route Flyout` 全部静默回到 home 页，出图 20 张
+    // md5 全同 —— 而"逐路由出图"看起来是跑过了。是我自己写下的教训
+    // （MIGRATION §8：必须核对产物互不相同）当场复发。
+    //
+    // 未知路由现在**明确报错并退出**，不再静默回 home：出图工具静默给错图，
+    // 比直接失败恶劣得多。
+    let Some(resolved) = resolve_route(&route) else {
+        eprintln!("[gallery] 未知路由 {route:?}；用 --list-routes 看全部合法值");
+        std::process::exit(2);
+    };
+    let mut view = Gallery::default();
+    view.route = resolved;
+    // --lang <tag>：强制语言，供**像素自验**用。
+    //
+    // 为什么需要它：dump 路不读系统语言（Gallery::default 的 prefs 是空的，
+    // 于是走回落分支），所以中日文只能这样才看得到。而中日文能不能真正出图，
+    // 正是 i18n 唯一无法用纯 CPU 断言覆盖的部分 —— 字形在宿主的字形图集里
+    // （见 docs/developer/i18n.md §8）。给一个开关，比让下一个人以为"中日文没接"要好。
+    //
+    // ⚠ 走**共用**的 `apply_forced_language`（窗口路也调它）—— 见那里的
+    // 「为什么必须是同一个函数」。
+    apply_forced_language(&args, &mut view);
+    // `--enter-ms <n>`：把入场动画时钟拨到指定毫秒，供**像素自验**用。
+    //
+    // 为什么需要它：动画只在"换路由之后的 333 ms 内"存在，而 dump 路只渲染
+    // 一帧 —— 不拨时钟就永远只能看到放完之后的样子，看不出档位到底动没动。
+    // 配合 `--route` 就能截到任意一档的画面。
+    if let Some(ms) = flag_value(&args, "--enter-ms") {
+        match ms.parse::<f32>() {
+            Ok(v) if v.is_finite() => view.enter_ms = v,
+            _ => {
+                eprintln!("[gallery] --enter-ms 要一个有限毫秒数，收到 {ms:?}");
+                std::process::exit(2);
+            }
+        }
+    }
+    // `--family <n>`：选参考页的族（0..1）。**只有 dump 路需要** ——
+    // 参考层两族收在 reference 页的 segmented 里，窗口路点一下就能切，
+    // 而静态出图必须能从命令行指定，否则两族里只有第 0 族被看见。
+    //
+    // ⚠ 这个开关是补回来的：族化之后 `--route reference` 永远只出第 0 族，
+    // 第 1 族的排版（尤其「内容超出固定页高被裁」）在静态自验里**看不见** ——
+    // 而本仓的页高固定、无滚动，裁切是唯一的表现形式。
+    if let Some(fam) = flag_value(&args, "--family") {
+        match fam.parse::<usize>() {
+            Ok(n) if n < REF_FAMILIES.len() => view.ref_family = n,
+            _ => {
+                eprintln!(
+                    "[gallery] --family 要 0..{} 的整数；族名见 --list-families",
+                    REF_FAMILIES.len().saturating_sub(1)
+                );
+                std::process::exit(2);
+            }
+        }
+    }
+    let (w, h) = (1400u32, 800u32);
+    // `--switch-press`：把开关钉在「按住」状态（press=1.0，checked 不变），
+    // 供**像素自验**用。按住态的液态玻璃（白罩消失、refraction、highight/inner-shadow）
+    // 的像素在纯 CPU 出图里最值得盯一眼 —— 窗口路才能看到的缺陷在这条路上同样现形，
+    // 而静态出图是 token 级的。
+    if args.iter().any(|a| a == "--switch-press") {
+        view.switch_demo.set_pressed(true);
+        // 一步到端点（dt > 0.5 的分支就是为这种场景写的）。
+        view.switch_demo.advance(1000.0);
+    }
+    let mut host = zephyra_fx::cpu_only::CpuHost::new(view, (w, h));
+    if light {
+        host.set_theme(ThemeVariant::Light);
+    }
+    // 样式表必须装上：否则 dump 图是「属性默认值」的样子，与窗口画面不同 ——
+    // 那会让这条自验从参考变成误导（两条路吃同一份表才互为参考）。
+    host.set_styler(install(build_sheet()));
+    println!("[dump] 路由：{route}");
+
+    let frame = host.frame();
+    // 列出**每一条带非常身滤镜**的绘制命令。
+    //
+    // # 为什么这里要打印它们
+    //
+    // `RenderReport::unimplemented_filters` 只给一个总数——而 fx 对每一条带滤镜的
+    // 命令都 +1，后端则每真实画了一趟离屏就 -1。出现「总数比预期多 1」时，
+    // 没有任何信息告诉你是**哪一条**。
+    //
+    // 那个「1」是本仓真实遇到的：effects 页报 3 趟拟合 + 1 条未执行。
+    // 对照本列表才能判定是真遗漏还是计数口径本身有问题。
+    // ⚠⚠ 必须在 `frame()` **之后**：`CpuHost::list()` 返回的是本次帧回放完成
+    // 之后的那份 DisplayList。先取就是空表 —— 第一版把这段放在 `frame()`
+    // 之前，打出来的是「带滤镜的命令共 0 条」，而同一张树在 GPU 路上报
+    // `refraction=3`。两个数字相互矛盾时，先怀疑自己取的是哪一份。
+    {
+        let list = host.list();
+        let mut n = 0usize;
+        for (i, item) in list.iter().enumerate() {
+            let zephyra_core::paint::Command::Quad { filter, .. } = &item.command else {
+                continue;
+            };
+            if filter.is_identity() {
+                continue;
+            }
+            n += 1;
+            println!("[dump] 滤镜命令 #{i}: {:?}", filter);
+        }
+        println!("[dump] 带非常身滤镜的命令共 {n} 条");
+    }
+
+    let r = frame.render;
+    let batch = host.batch();
+    let glyph_vertices = batch
+        .solid
+        .chunks_exact(4)
+        .filter(|c| (c[0].kind - zephyra_fx::quad::kind::GLYPH).abs() < 0.01)
+        .count();
+    println!(
+        "[dump] DisplayList → 顶点：四边形 {} 个、顶点 {} 个（其中字形 {} 个）、跳过 {} 个、缺失纹理 {} 个",
+        r.quads,
+        batch.solid.len(),
+        glyph_vertices,
+        r.skipped,
+        r.missing_textures
+    );
+    let mut path_cmds = 0usize;
+    let mut path_tris = 0usize;
+    for item in host.list().iter() {
+        if let zephyra_core::paint::Command::Path { vertices, .. } = &item.command {
+            path_cmds += 1;
+            path_tris += vertices.len() / 3;
+        }
+    }
+    println!(
+        "[dump] 矢量图标：Command::Path {path_cmds} 条、三角形 {path_tris} 个{}",
+        if path_tris == 0 {
+            "  ← ⚠ 一个都没有：图标名没查到，或展平/三角化返回空"
+        } else {
+            ""
+        }
+    );
+    let a = host.atlas_stats();
+    println!(
+        "[dump] 字形图集：已缓存 {} 个字形，用量 {:.1}%",
+        a.glyphs,
+        a.usage() * 100.0
+    );
+
+    let clear = zephyra_core::core::Color::rgba(0.0, 0.0, 0.0, 1.0);
+    let canvas = host.render_cpu(clear);
+    // 底色 = 出现最多的颜色（必然是根容器铺上去的 surface），与 demo 同法。
+    let mut counts: std::collections::HashMap<[u8; 3], usize> = Default::default();
+    for p in canvas.pixels.chunks_exact(4) {
+        *counts.entry([p[0], p[1], p[2]]).or_default() += 1;
+    }
+    let Some((&bg, _)) = counts.iter().max_by_key(|(_, n)| **n) else {
+        eprintln!("[dump] 画布是空的");
+        return;
+    };
+    let lit = canvas
+        .pixels
+        .chunks_exact(4)
+        .filter(|p| [p[0], p[1], p[2]] != bg)
+        .count();
+    let total = (w * h) as usize;
+    println!(
+        "[dump] CPU 光栅：底色 {:?}，内容像素 {lit}/{total}（{:.1}%），不同颜色 {} 种",
+        bg,
+        lit as f64 / total as f64 * 100.0,
+        counts.len()
+    );
+
+    let path = std::path::Path::new("gallery-cpu.bmp");
+    match host.dump_cpu_bmp(&path.display().to_string(), clear) {
+        Ok(()) => {
+            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            println!("[dump] 已写出 {}", abs.display());
+        }
+        Err(e) => eprintln!("[dump] 写 {} 失败：{e}", path.display()),
+    }
+}
+
+/// 自带的 MiSans 字体（含 CJK）。放在 `gallery/fonts/` 下 ——
+/// 它是**这个应用**的字体，不是框架的（框架用 `ZEPHYRA_FONT` 让应用自己指定）。
+///
+/// 7.7MB 进两次二进制没有意义，所以直接内嵌仓库里那一份。
+const DEMO_FONT: &[u8] = include_bytes!("../../fonts/MiSans-Regular.ttf");
+
+/// 让 `zephyra_fx` 选中自带字体（不走系统字体候选表）。
+fn use_demo_font() {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in DEMO_FONT {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    let path = std::env::temp_dir().join(format!("zephyra-demo-font-{h:016x}.ttf"));
+    if !path.exists() {
+        if let Err(e) = std::fs::write(&path, DEMO_FONT) {
+            eprintln!("[gallery] 落地字体失败（{e}），退回系统字体 —— 中文会是豆腐块");
+            return;
+        }
+    }
+    std::env::set_var(
+        zephyra_fx::FONT_OVERRIDE_ENV,
+        path.to_string_lossy().as_ref(),
+    );
+}
+
+// ---- 背景照片（材质 / 液态玻璃那页的背景板）----
+
+/// 背景照片（编译期内嵌的 JPEG）。
+///
+/// 与字体同一个待遇 —— gallery 是**演示应用**，照片是它的演示素材。
+/// 运行时从磁盘找文件的话，cwd 一变照片就没了，而症状是「背景全黑」，
+/// 与「纹理没注册上」看起来一模一样。
+const MOUNTAIN_JPEG: &[u8] = include_bytes!("../../assets/mountain.jpg");
+
+/// 把内嵌的 JPEG 解成 **RGBA8**（行优先）。
+///
+/// # 为什么自己补 alpha
+///
+/// `jpeg-decoder` 0.3 只有 `decode()`，出的是 **RGB8**（三通道）；
+/// 宿主的 `register_texture` 要的是 **RGBA8**。补 alpha 是一次逐像素循环，
+/// 只在建窗那一刻跑一次 —— 不是热路径，不值得为它多引一个图像库。
+///
+/// # 为什么返回 `Option` 而不是 `Result`
+///
+/// 失败只有两种（JPEG 坏 / 像素格式不认识），两种的处置都一样：**这页没有背景**。
+/// 而「没有背景」不该让整个应用起不来 —— 材质页照样能开，只是照片那块空着。
+/// 所以调用方把 `None` 打成一行警告，然后继续跑。
+fn decode_mountain() -> Option<(Vec<u8>, u32, u32)> {
+    let mut dec = jpeg_decoder::Decoder::new(MOUNTAIN_JPEG);
+    let raw = dec.decode().ok()?;
+    let info = dec.info()?;
+    // 每个像素的字节数：彩色 3、灰度 1。其余格式（CMYK / 12 位）本仓不处理 ——
+    // 素材是自己准备的，格式变了会在这里显形，而不是画出一张错乱的图。
+    let src = match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => 3usize,
+        jpeg_decoder::PixelFormat::L8 => 1usize,
+        _ => return None,
+    };
+    let (w, h) = (info.width as u32, info.height as u32);
+    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+    for (i, px) in raw.chunks_exact(src).enumerate() {
+        let o = i * 4;
+        // 灰度：三个通道取同一个值；彩色：R / G / B 依次取。
+        let (r, g, b) = if src == 3 {
+            (px[0], px[1], px[2])
+        } else {
+            (px[0], px[0], px[0])
+        };
+        rgba[o] = r;
+        rgba[o + 1] = g;
+        rgba[o + 2] = b;
+        rgba[o + 3] = 255;
+    }
+    Some((rgba, w, h))
+}
+
+/// 把背景照片注册进宿主。
+///
+/// # 为什么两个后端能共用这一份
+///
+/// D3D12 返回 `Result<u32, String>`（槽位句柄）、Vulkan 返回
+/// `Result<(), SurfaceError>` —— **返回值类型不同，参数表相同**
+/// （名字 / 像素 / 宽 / 高），而本函数只关心「有没有失败」。
+/// 于是写成 `if let Err(e) = …` 两边都编得过，不必分成两份。
+///
+/// # 为什么失败不致命
+///
+/// 这张照片只是**背景板**。注册不上时材质页少一张照片，其余页面照常。
+/// 真的把整个应用拖死才是错的 —— 那样一张图就足以让 gallery 开不了。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+fn register_mountain(host: &mut Host) {
+    let Some((pixels, w, h)) = decode_mountain() else {
+        eprintln!("[gallery] 背景照片解不出来（JPEG 坏或格式不认识），材质页的背景会是空的");
+        return;
+    };
+    if let Err(e) = host.register_texture(MOUNTAIN_TEXTURE, &pixels, w, h) {
+        eprintln!("[gallery] 注册背景纹理失败: {e:?}");
+    }
+}
+
+/// 本次编译选中的宿主类型。
+///
+/// # 为什么是别名而不是在每处写全名
+///
+/// 下面的 `Bootstrap` 与它的 `ApplicationHandler` 实现**两个后端共用**（事件翻译、
+/// 样式表装载、首帧补齐这些逻辑与后端无关），而宿主类型不同。给别名之后，
+/// 共用的那段代码不必带 `#[cfg]`，差异只留在这一行。
+#[cfg(all(windows, feature = "d3d12"))]
+type Host = zephyra_winit_d3d12::HostWindow<Gallery>;
+#[cfg(all(not(windows), feature = "linux-vk"))]
+type Host = zephyra_vulkan::HostWindow<Gallery>;
+
+/// 自举宿主：第一次 `resumed` 时建窗、装样式表、补第一帧。
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+struct Bootstrap {
+    inner: Option<Host>,
+    view: Option<Gallery>,
+    /// 主题意图共享格（View 写、这里读）。
+    theme: Arc<AtomicU8>,
+}
+
+#[cfg(any(
+    all(windows, feature = "d3d12"),
+    all(not(windows), feature = "linux-vk")
+))]
+impl winit::application::ApplicationHandler for Bootstrap {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if self.inner.is_some() {
+            return;
+        }
+        let view = self.view.take().expect("resumed 只应发生一次建窗");
+        // ⚠️ 必须按**画布**尺寸建窗：`gallery.zstyle` 的 `box.window` 是
+        // `width: 1400px / height: 800px`（core 没有 flex-grow，铺满靠定值），
+        // 而宿主默认给 640×480 —— 窗口比画布小的时候，超出部分只是**被裁掉**：
+        // 布局对、绘制对、屏幕上一片内容不见了，看起来像排版坏了。
+        let (w, h) = (
+            zephyra_gallery::app::shell::CANVAS_W as u32,
+            zephyra_gallery::app::shell::CANVAS_H as u32,
+        );
+        // 本应用自绘标题栏，故设为无边框。frameless 是一条**通用设置**
+        // （`window.frameless` / `ZEPHYRA_FRAMELESS`），对所有应用、所有后端有效——
+        // 这里只是本应用选择开启它，不是 gallery 专属逻辑。gallery/ZephyraUI.json
+        // 已写 frameless:true，但配置按**工作目录**解析：直接运行
+        // target/debug/gallery.exe 时 cwd 往往不含它，设置被静默丢掉、系统标题栏
+        // 叠回自绘标题栏之上。用通用的运行时 env 覆盖，让无边框与 cwd 无关。
+        std::env::set_var("ZEPHYRA_FRAMELESS", "1");
+        let mut app = Host::new_lenient_sized(event_loop, view, (w, h));
+
+        // 背景照片要在**第一帧之前**注册 —— 否则首帧的材质页背景是空的，
+        // 而首帧是这一页唯一一次「从零画出来」的机会（之后每帧都复用纹理表）。
+        //
+        // 位置也在 `set_styler` 之前：样式表只写**纹理名**，真正建 GPU 资源的是
+        // 这里。两件事的顺序无所谓，但都必须在 `app.frame()` 之前。
+        register_mountain(&mut app);
+
+        // 样式表是第一优先级证明物：「源码里没有样式」要能看到它接上了。
+        app.set_styler(install(build_sheet()));
+
+        // 窗口外观：应用只说「我要暗色 + 大圆角」，能不能做到由平台层回答。
+        //
+        // ⚠️ 这里**没有一行 Win32 代码** —— 暗色/圆角走 DWM，判定走
+        // `zephyra-platform-win`，句柄转换在宿主里。Linux 上这段原样编译，
+        // 只是平台层返回「不支持」，界面自动退回系统默认。
+        //
+        // 颜色留空（`None`）＝交给系统：本仓自绘标题栏，系统配色只在
+        // 「深色模式」这一位上参与，其余由 `gallery.zstyle` 管。
+        let _ = app.apply_window_chrome(zephyra_platform::WindowChrome {
+            dark: true,
+            corner: zephyra_platform::CornerPreference::Round,
+            caption_color: None,
+            border_color: None,
+        });
+
+        // 首帧必须在这里补：交换链建好了、DComp 提交了，但从未 present 过的话，
+        // 屏幕上是一个还没被写过的白色合成交换链 —— 唯一症状是「窗口全白」，
+        // 极易被当成渲染问题查。
+        app.sync_input();
+        let frame = app.frame();
+        // 首帧报告打出来。不打的话，你得靠目测「是不是滤镜没接上」——
+        // 而拟合术的未接线状态与「弱拟合」在画面上几乎一样。
+        report_frame("首帧", &frame);
+        app.present();
+
+        self.inner = Some(app);
+
+        // 拖边时逐帧跟随 —— **只有 Windows 需要显式装**。
+        //
+        // 它装的是 Win32 窗口子类（`SetWindowLongPtrW` + 定时器），用来在
+        // `WM_SIZE` 里同步处理拖边。Linux 上 winit 的 `Resized` 本来就每次尺寸变化
+        // 都发，而交换链由 wgpu 在 acquire 时按当前尺寸重建 —— 所以那套子类在那边
+        // **没有对应物**，也不该为了「接口同形」放一个空实现：空壳会被误读成
+        //「装上了」，而真实情况是「不需要」。
+        //
+        // ⚠️ 必须放在 `self.inner = Some(app)` **之后**，理由是地址：
+        // 钩子靠裸指针回到宿主（`HostWindow::enable_live_resize` 的文档写了
+        // 「地址稳定」这条不变量）。上面那几行里 `app` 一直是个**栈上局部变量**；
+        // `Some(app)` 才把它搬进 `self.inner` 的内联存储。装在搬之前的话，
+        // 指针指向的是那个即将失效的栈槽 —— 症状是「拖边时偶尔整窗崩掉」，
+        // 而且必现不了、更难归因。
+        #[cfg(all(windows, feature = "d3d12"))]
+        {
+            let inner = self.inner.as_mut().expect("刚放进去的宿主");
+            if let Err(e) = inner.enable_live_resize() {
+                eprintln!("[gallery] 装不上实时 resize 子类，拖边时会退回「拖完才刷新」: {e}");
+            }
+        }
+
+        // 无障碍（Windows UI Automation）—— 让屏幕阅读器与自动化脚本**看得见**
+        // 这个界面。
+        //
+        // 应用这一侧**一行代码都不用改**：无障碍树是从画出来的那棵树派生的
+        // （`zephyra-uia` 的 `rules::build`），所以它不会与画面漂移。
+        //
+        // 装序：必须在 `enable_live_resize` **之后** —— 两者都是
+        // `SetWindowLongPtrW(GWLP_WNDPROC)`，消息链才是
+        // `UIA → live_resize → winit`。
+        //
+        // 失败不是致命错误：没有无障碍，界面照常用。
+        #[cfg(all(windows, feature = "d3d12"))]
+        {
+            let inner = self.inner.as_mut().expect("刚放进去的宿主");
+            if let Err(e) = inner.enable_uia() {
+                eprintln!("[gallery] 装不上无障碍（UIA），屏幕阅读器读不到这个界面: {e}");
+            }
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let Some(app) = self.inner.as_mut() {
+            // 主题意图对账：View 点了切换，这里才真的换。
+            let want_light = self.theme.load(Ordering::Relaxed) == 1;
+            let is_dark = app.theme_variant() == ThemeVariant::Dark;
+            if want_light == is_dark {
+                app.set_theme(if want_light {
+                    ThemeVariant::Light
+                } else {
+                    ThemeVariant::Dark
+                });
+            }
+            app.about_to_wait(event_loop);
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        match self.inner.as_mut() {
+            Some(app) => app.window_event(event_loop, id, event),
+            None => {
+                let _ = event;
+            }
+        }
+    }
+}

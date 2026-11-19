@@ -1,0 +1,207 @@
+/* 应用外壳：窗口、标题栏、导航栏、内容卡、页头、通用布局。前端资源放在 frontend/。
+ * Apple HIG 度量。
+ */
+
+/* ---- 窗口 ---- */
+
+box.window {
+    direction: vertical;
+    cross-align: stretch;
+    background: @surface;
+}
+
+box.body {
+    direction: horizontal;
+    cross-align: stretch;
+}
+
+/* ---- 标题栏 ---- */
+
+box.titlebar {
+    direction: horizontal;
+    main-align: space-between;
+    cross-align: center;
+    spacing: 16px;
+    height: 44px;
+    padding: 10px;
+    background: @surface_alt;
+}
+
+/* ⚠ 这里**没有** `text.app-title` / `text.page-title` 两条规则。
+ *
+ * 源码发的是 `text_label("app-title", ..., "text-body-strong")` —— 「分类名」是
+ * 第三参数 `"text-body-strong"`，`"app-title"` 只是 **key**（给 hit-test 用的
+ * 身份），core 不会把它当分类名发出去。于是写成 `text.app-title` 的规则一个
+ * 元素都选不中，标题栏标题实际由控件层的 `text.text-body-strong` 上色。
+ *
+ * 两条死规则里 `text.page-title` 的值（22px / @content）与 `text.text-title`
+ * **逐项相同**，所以删掉它连取值都不变；`text.app-title`（14px / 二次色）与
+ * 实际生效的 `text-body-strong`（15px / 主色）不同，但那条规则从来没生效过，
+ * 删掉同样不改变画面。判据见门禁 `every_stylesheet_rule_matches_something`。 */
+
+box.search {
+    direction: horizontal;
+    cross-align: center;
+    spacing: 8px;
+    width: 340px;
+    height: 34px;
+    padding: 10px;
+    corner-radius: 12.8px;
+    corner-shape: superellipse(1.5);
+    background: @card;
+    border-width: 1px;
+    border-color: @card_border;
+}
+
+box.search-icon {
+    width: 16px;
+    height: 16px;
+    icon-color: @content_secondary;
+}
+
+box.caption-bar {
+    direction: horizontal;
+    spacing: 0px;
+}
+
+control.caption-btn {
+    width: 44px;
+    height: 44px;
+    direction: horizontal;
+    main-align: center;
+    cross-align: center;
+    background: transparent;
+    corner-radius: 12.8px;
+    corner-shape: superellipse(1.5);
+}
+
+control.caption-btn.hovered {
+    background: @control_secondary;
+}
+
+control.caption-btn.pressed {
+    background: @control_tertiary;
+}
+
+control.caption-btn.close.hovered {
+    background: @critical;
+}
+
+box.caption-icon {
+    width: 14px;
+    height: 14px;
+    icon-color: @content;
+}
+
+/* ---- 导航栏 ---- */
+
+box.nav-pane.compact {
+    width: 56px;
+    padding: 6px;
+    cross-align: center;
+}
+
+box.nav-pane {
+    direction: vertical;
+    spacing: 6px;
+    padding: 12px;
+    width: 260px;
+    height: 756px;
+    background: @surface_alt;
+}
+
+/* ---- 内容卡 ---- */
+
+box.content-card {
+    direction: vertical;
+    spacing: 20px;
+    width: 1139px;
+    height: 756px;
+    padding: 28px;
+    background: @layer;
+    corner-radius: 19.2px;
+    corner-shape: superellipse(1.5);
+}
+
+/* ---- 页头 ---- */
+
+box.page-header {
+    direction: horizontal;
+    main-align: space-between;
+    cross-align: center;
+    spacing: 16px;
+}
+
+box.header-title {
+    direction: horizontal;
+    cross-align: center;
+    spacing: 14px;
+}
+
+box.header-tools {
+    direction: horizontal;
+    cross-align: center;
+    spacing: 10px;
+}
+
+/* ---- 通用布局 ---- */
+
+box.section {
+    direction: vertical;
+    spacing: 14px;
+}
+
+box.section-body {
+    direction: vertical;
+    spacing: 14px;
+}
+
+/* ---- 入场动画 ---- */
+
+box.page {
+    direction: vertical;
+    cross-align: stretch;
+}
+
+box.page.enter-1 {
+    opacity: 0.00;
+    translate-y: 8px;
+}
+box.page.enter-2 {
+    opacity: 0.13;
+    translate-y: 7px;
+}
+box.page.enter-3 {
+    opacity: 0.26;
+    translate-y: 6px;
+}
+box.page.enter-4 {
+    opacity: 0.39;
+    translate-y: 5px;
+}
+box.page.enter-5 {
+    opacity: 0.52;
+    translate-y: 4px;
+}
+box.page.enter-6 {
+    opacity: 0.65;
+    translate-y: 3px;
+}
+box.page.enter-7 {
+    opacity: 0.78;
+    translate-y: 2px;
+}
+box.page.enter-8 {
+    opacity: 0.91;
+    translate-y: 1px;
+}
+
+control.dd-morph {
+    opacity: 1;
+}
+control.dd-morph-solid {
+    opacity: 1;
+}
+control.dd-morph-glass {
+    opacity: 1;
+}

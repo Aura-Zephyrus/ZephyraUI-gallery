@@ -1,0 +1,504 @@
+/* gallery 的页面样式 —— Apple HIG 度量。前端资源放在 frontend/。
+ *
+ * 与控件层的分工：控件层说「一个 Button 长什么样」，这里说「Button 摆在
+ * 页面的哪一行、这一行的左右各多宽」。
+ *
+ * # 通用编排件（每页都用）
+ *
+ * | 分类名 | 角色 |
+ * |---|---|
+ * | `.page-*` | 每页的根容器，只给竖排与间距 |
+ * | `.section` | 一个分区：标题 + 主体 |
+ * | `.row` / `.stack` | 横排 / 竖排 |
+ * | `.demo-row` / `.demo-slot` | **控件样例行**：左标签 + 右控件 |
+ *
+ * # `.demo-slot` 为什么给 `main-align: start`
+ *
+ * 默认 `start`，于是所有控件的**左边**对齐 —— 扫第二列时不会因为第一个控件
+ * 特别宽而全部错开。这是「标签固定一小截」这个编排的全部意义。
+ */
+
+/* ---- 通用编排 ---- */
+
+box.section {
+    direction: vertical;
+    spacing: 6px;
+}
+
+box.section-body {
+    direction: vertical;
+    spacing: 6px;
+}
+
+box.demo-row {
+    direction: horizontal;
+    cross-align: center;
+    spacing: 16px;
+}
+
+box.demo-slot {
+    direction: horizontal;
+    main-align: start;
+    cross-align: center;
+    spacing: 10px;
+}
+
+/* 下拉菜单的槽位要**保留按钮尺寸**，并把形变锚在左上角。
+ *
+ * 展开时控件仍在流里长高；默认 `cross-align: center` 会让 36px 的槽位
+ * 把 114px 的菜单上下均分（顶边比按钮高 39px，即“菜单出现在按钮上方”）。
+ * `cross-align: start` 把顶边钉在原按钮顶边，形变从左上角向右下长。
+ * 72×36 是收起态按钮的外盒（工件 `layout` 实测）。 */
+box.demo-slot.dd-slot {
+    width: 72px;
+    height: 36px;
+    cross-align: start;
+}
+
+text.demo-label {
+    width: 132px;
+    text-size: 13px;
+    text-color: @content_secondary;
+}
+
+/* ---- 每页根容器 ---- */
+
+box.page-guide {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-state {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-styling {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-theme {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-testing {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-reference {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+/* 参考层两族：不再是路由，但各族的 page() 仍发这些分类名（嵌在
+ * reference 页里）。少一条就是「那一族嵌进来没有间距」。 */
+box.page-buttons {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+box.page-checkbox {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+/* 第三族（开关族）与另两族同形。 */
+box.page-switches {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+/* `.page-layout` 比别的页紧一档（16px 而不是 24px）：这一页现在挂**四**节
+ * （flex 演示 + 无滚动 + 断点 + 触控目标），24px 会把最后一节的按钮顶出
+ * 800px 高的客户区 —— 而那正好撞上这一页自己教的那条边界：掉出去就是
+ * 掉出去，没有滚动条可以救。门禁 `hit_test_agrees_with_the_painted_rects`
+ * 钉住这个：按钮矩形掉出客户区就红。 */
+box.page-layout {
+    direction: vertical;
+    spacing: 16px;
+    cross-align: stretch;
+}
+/* 材质页（材质专区 + 液态玻璃合并在一页）的根容器分类名。 */
+box.page-materials {
+    direction: vertical;
+    spacing: 8px;
+    cross-align: stretch;
+}
+/* ⚠ 这里**没有**旧 `home` 页的样式（`box.hero` / `text.hero-*` /
+ * `control.button.category` / `box.category-row`）。home 页随
+ * 「示例项目」重写一起删除——它被指南层的 `guide` 章取代，那些规则成了
+ * 死规则，由 `every_stylesheet_rule_matches_something` 抓出来整块删除。
+ *
+ * 旧注释里「横幅压到 180」「分类入口不要大卡片」的取舍仍有参考价值：
+ * 那两条讲的是**信息密度**（一屏里视觉重量怎么分），与 home 页是否存在无关。
+ */
+
+/* ---- 材质页（材质专区 + 液态玻璃，合并一页） ---- */
+
+/* 照片板 —— 这一页**唯一**的一张照片背景。
+ *
+ * # 为什么照片画在**容器自己**身上而不是单独一个子节点
+ *
+ * `image-texture` 是节点的**内容**，绘制顺序是「本节点的外观 → 本节点的图像 →
+ * 子节点」。所以照片挂在容器自己身上时，它在所有子节点（材质样板、玻璃块）
+ * **下面** —— 而这正是折射 / 磨砂要的：那些滤镜读的是「元素背后已经画在屏幕
+ * 上的东西」（`g_dst`），照片必须先画进去，才谈得上被折射、被模糊。
+ *
+ * 单独挂一个子节点的话，它会**占掉一行布局高度**（core 没有绝对定位，
+ * 只有 `position: absolute` 的窗口坐标版），照片一摆出来就把下面的内容顶走。
+ *
+ * # 为什么棋盘格被照片取代
+ *
+ * 棋盘格是**折射的测试图案**：高对比、规则、便于肉眼判断「有没有被掰弯」。
+ * 但它不是**背景**——这一页要讲的是「材质放在真实画面上是什么样子」。
+ * 照片有同样的判读力（雪山脊线、石阶的汇聚直线都是硬边），而且好看得多。
+ *
+ * # 尺寸为什么是写死的
+ *
+ * 照片按**节点的整个矩形**铺满（`image-size` 默认 −1 = 撑满），所以节点的
+ * 宽高比 = 照片的宽高比才不会拉伸。`assets/mountain.jpg` 是按 732 : 480
+ * 准备的（1464 × 960），这里改一个数就得改那张图 —— 门禁
+ * `the_photo_aspect_matches_the_board` 钉住这件事。
+ *
+ * # 内容高 440 的去处
+ *
+ * 440 = 152（材质样板行）+ 40（行距）+ 152（玻璃块行）+ 96（上下各 48）。
+ * 上下各留 48 是给「照片在玻璃块**外面**也露着」用的：只有玻璃块盖住的
+ * 那一小块照片，看不出「有没有被掰弯」。
+ */
+box.material-board {
+    direction: vertical;
+    main-align: center;
+    cross-align: center;
+    spacing: 40px;
+    padding: 20px;
+    width: 732px;
+    height: 480px;
+    /* 液态玻璃用的**大圆角**（这块底板承载整排玻璃样板）。 */
+    corner-radius: 32px;
+    corner-shape: superellipse(1.5);
+    image-texture: "bg-mountain";
+}
+
+/* 材质样板行：三块材质（实心 / 磨砂 / 液态玻璃）并排浮在照片上。
+ *
+ * 宽 512 = 3 × 160 + 2 × 16，比照片内容宽（692）**窄** —— 于是左右各露出
+ * 90px 的照片，实心 / 磨砂 / 玻璃三者的差别才有着落：没有照片做背景，
+ * 「磨砂」与「玻璃」都只是一块说不清是什么的半透明板。 */
+box.material-swatches {
+    direction: horizontal;
+    spacing: 16px;
+    cross-align: start;
+}
+
+/* 一块材质样板。160 × 120：比玻璃块小一号 —— 尺寸差就是「样板 vs 样品」的
+ * 直觉差别，两者混成一样大时，一眼看去分不清哪排是材质选型、哪排是可调样品。 */
+box.material-swatch {
+    width: 160px;
+    height: 120px;
+    direction: vertical;
+    main-align: center;
+    cross-align: center;
+    /* 液态玻璃样板：大圆角。 */
+    corner-radius: 32px;
+    corner-shape: superellipse(1.5);
+    border-color: #ffffffb3;
+    border-width: 1px;
+}
+
+/* 实心：唯一**不透光**的一种，所以它自己的底色就是全部内容。
+ *
+ * 底色给的是**浅色半透**（#e6edf7d9）而不是不透明 —— 不透明的话这块板就
+ * 完全盖住照片，读者看不到「同一张照片在三种材质下的三种样子」这件事本身。 */
+box.material-swatch.material-solid {
+    background: #e6edf7d9;
+}
+
+/* 磨砂：背后被高斯模糊后透出。
+ *
+ * ⚠ `material:` 展开成的是 `Filter::BackdropBlur`，它读的是**背景副本**
+ *   （`g_dst`），而**元素自己的底色会被丢掉** —— 离屏合成趟的输出就是
+ *   「模糊后的背景」，元素原本的填充不在其中。所以这块样板只有一圈描边
+ *   定形，中间全是模糊后的照片。 */
+box.material-swatch.material-frosted {
+    material: frosted;
+}
+
+/* 玻璃：形状的边被**向内推开** + 边缘一道高光，背景直直透过来。
+ *
+ * 参数用**材质自带默认**（位移 6px / 作用带 14px）—— 这块样板讲的是
+ * 「材质种类」，不是「参数怎么调」；参数那一摊在下面的玻璃块行，
+ * 由面板逐帧调。
+ *
+ * ⚠ 与旁边那块 `material-frosted` 的差别：磨砂**读背景**（要一份全屏副本），
+ * 玻璃**不读背景**（位移是解析的）⇒ 这块样板几乎不花钱。
+ * 视觉上的代价：背景不再被掰弯 —— 它是一块「清玻璃」。 */
+box.material-swatch.material-glass {
+    material: glass;
+}
+
+/* 样板的标签：深色小牌。
+ *
+ * ⚠ 为什么不用浅色字：照片明暗不定（雪山是亮的、石阶是暗的），浅色字压
+ *   在亮处读不出来、深色字压在暗处读不出来。而**这块标签自己带底色**，
+ *   于是它与背后的照片明暗无关 —— 这是唯一能在任意照片上都读出来的做法。
+ *   （旧的玻璃标签是 `#ffffffcc`，那是因为它压在深蓝棋盘上；换成照片后
+ *   那个前提没了，字色必须跟着换。）
+ *
+ *   这一条规则**玻璃块那排的标签也用**（`.glass-chip` 是同一个类）——
+ *   两排标签压在同一张照片上，用两套规则就会出现「一排看得清一排看不清」。 */
+box.photo-chip {
+    background: #0b1220b3;
+    /* ⚠ 单值：`padding: 3px 8px` 这种多值写法 zstylec **解析不了**，而且失败
+     *   的后果不是「这条规则被跳过」而是**整份 pages.zstyle 被丢弃** ——
+     *   屏幕上会看到「所有页面都退回默认排版」。 */
+    padding: 4px;
+    corner-radius: 9.6px;
+    corner-shape: superellipse(1.5);
+}
+
+text.photo-chip-text {
+    text-size: 13px;
+    text-color: #f2f6ff;
+}
+
+/* 玻璃块行：三块玻璃并排浮在照片上。
+ *
+ * ⚠ 这里的 `translate-y: -160px` **删掉了**。那一版要让玻璃块压进棋盘格的
+ *   条带中段（core 没有浮层 / 负 margin / 绝对定位，位移是唯一的重叠手段），
+ *   于是玻璃块「画在哪里」与「布局在哪里」分了家，几何断言全得折算。
+ *   现在照片**铺满整块板**，玻璃块本来就在照片上面，不需要任何位移。
+ */
+box.glass-panes {
+    direction: horizontal;
+    spacing: 16px;
+    cross-align: stretch;
+}
+
+/* 玻璃块与它的标签。标签在**下面** —— 标签压在玻璃块上面会挡住折射的主体。 */
+box.glass-cell {
+    direction: vertical;
+    spacing: 8px;
+    /* ⚠ 必须 `center`：竖排容器的默认交叉轴是**拉伸**，不给的话标签小牌会被
+     * 拉满 220px（玻璃块那么宽），变成一条横贯的深色条而不是一块小牌。 */
+    cross-align: center;
+}
+
+/* 玻璃块的标签（薄 / 普通 / 厚）。
+ *
+ * ⚠ 浅色字压在照片上读不出来（照片明暗跨度极大）—— 所以标签自带一块
+ *   **深色小牌**，靠自己的底色保证可读。理由与 `.photo-chip` 相同。 */
+text.glass-title {
+    text-size: 13px;
+    text-color: #f2f6ff;
+}
+
+/* 玻璃块本体。
+ *
+ * ⚠⚠ 这里**不许有 `background`** —— 玻璃必须是纯透明的：「上面盖着一层玻璃」
+ *    只由**折射**（图案在边缘被掰弯、露在玻璃外继续）+ 一圈描边亮线表达。
+ *    任何底色都会在玻璃后面与真实背景之间隔上一层颜色 —— 那不是玻璃，
+ *    是贴片。门禁 `the_glass_pane_has_no_fill` 钉住这件事。
+ *
+ *    走过的弯路（记下来防复发）：先试过白 @ 30%（`#ffffff4d`）—— 真 GPU
+ *    截图上的观感是「**一点透明度都没有**」；降到 15%（`#ffffff26`）仍是一层
+ *    纱，读起来还是磨砂瓷砖。两版都在往玻璃上**加**东西，而要的恰恰是**不加**：
+ *    底色一旦存在，「玻璃下面是什么」就永远隔着一层颜色。
+ *
+ * ⚠ 描边（`#ffffffb3` = 70% 白，1px）是玻璃的**边缘高光**，不是底色：
+ *    形状靠这圈亮线读出来。实玻璃的边就是亮的（光在倒角处斜着进出）。
+ *    没有它时，位移弱的区域（玻璃中央的平带）边界完全消失，玻璃在画面上
+ *    「找不着边」。
+ *
+ * ⚠ 为什么必须有 `.glass-pane`（不带档位）这一条：它给**玻璃体本身**的几何
+ *    （宽 / 高 / 圆角 / 描边）。`filter` 不写在这里 —— 逐帧写在 `props::FILTER`
+ *    上，见下面的 ⚠ 段。
+ */
+/* ⚠ 宽度必须写死：玻璃块**没有子节点**，而 core 的容器不给宽度就按内容测量 ——
+ * 空容器量出来是 0，于是这块玻璃在画面上根本不存在（实测过一次：标题在、块没了）。
+ * 写死宽度不是「外观写进源码」，它仍然在这张表里。 */
+box.glass-pane {
+    width: 220px;
+    height: 120px;
+    /* 液态玻璃本体：大圆角。 */
+    corner-radius: 32px;
+    corner-shape: superellipse(1.5);
+    border-color: #ffffffb3;
+    border-width: 1px;
+}
+
+/* ⚠ 这里**没有** `filter:`。
+ *
+ * 折射参数（厚度 / 倒角带宽 / 色散 / 折射率）由 `pages::effects.rs` 逐帧从
+ * `Gallery::glass` 算出来并直接写在 `props::FILTER` 上，参数面板的 `[−] [+]` 改的就是它。
+ * 写在样式表里的后果不是「多一份默认值」，而是**参数被钉死成三档** ——
+ * 而这一页的职责恰恰是让人调它们。
+ *
+ * 为什么 `FILTER` 不受「外观不进源码」那条规矩：它的四个参数是**物理量**
+ * （玻璃有多厚、折射率多少），不是**样式**（颜色、间距、圆角）—— 没有
+ * `@令牌` 对应物，也不随主题变化。见 `gallery::glass::Glass::filter` 的文档。
+ *
+ * 这条规则只管**静态**外观：半透明的玻璃体、圆角、描边。 */
+
+/* ---- 折射参数面板 ---- */
+
+/* 四个步进器并排。而不是四行 ——
+ *
+ * 内容卡（`shell::CONTENT_H` 756）减去页头与标题只剩 400 出头，而舞台本身
+ * 就占 255。参数面板只能占一行。而一行四组在 1139 宽下绕结够用（每组约
+ * 260），竖排则要 160px，把舞台抹出客户区。
+ *
+ * ⚠ core 没有折行，所以「一行放不下」不是「自动换到下一行」，
+ * 而是**溢出被裁掉**。病状是右侧一组不见了，且不报错。 */
+box.glass-params {
+    direction: horizontal;
+    spacing: 20px;
+    cross-align: center;
+}
+
+box.glass-param {
+    direction: horizontal;
+    spacing: 8px;
+    cross-align: center;
+}
+
+text.glass-param-label {
+    text-size: 13px;
+    text-color: @content_secondary;
+}
+
+/* 数值给固定宽度：不给的话一位数→两位数时右侧的 `[+]` 会左右挪，
+ * 而「按钮在动」很容易被误读成「点它有效」。 */
+text.glass-param-value {
+    text-size: 14px;
+    text-color: @content;
+    width: 44px;
+}
+
+/* 装饰开关行：一行一个开关，与上面的四组步进器隔开 ——
+ * 「装饰」是「玻璃周围画什么」，不是第五个折射参数。 */
+box.glass-decor-row {
+    direction: horizontal;
+    spacing: 10px;
+    cross-align: center;
+}
+
+/* 指南层 styling 章：令牌着色的示例文字。
+ *
+ * # 它的存在理由
+ *
+ * 那一章要教「颜色走令牌」—— 而最好的教法是**现场给一条**：
+ * `@content_secondary` 的值由当前主题给，换主题时这行字自己变色，
+ * 源码一个字不用改。删掉这条规则，示例就变成「说了但不做」。 */
+text.styling-note {
+    text-size: 15px;
+    text-color: @content_secondary;
+}
+
+/* ⚠ 这里**没有**步进按钮的尺寸覆写，走控件层 `.round` 的默认 44px 见方。
+ *
+ * 曾经写过 `control.button.round { width: 28px; height: 28px; }` —— 它一个元素
+ * 都选不中：`controls::round_button` 发的是 `NodeTag::control` + 分类名 `round`，
+ * **没有** `button` 这个分类名（那是别的控件用的）。尺寸纹丝不动，而
+ * 「分类名存在」「元素有分类名」那两条门禁全绿 —— 这正是新门禁
+ * `every_stylesheet_rule_matches_something` 要抓的形状。
+ *
+ * 保留 44px 而不是改成 28px：本仓的触控尺寸判据（`Gallery::touch_target`）就落在
+ * 44~48 这一档，参数面板是给人**点**的控件，不是给人看的装饰。实测（1400×800
+ * 画布）一行四组共 684px，落在内容卡的 732px 里，压到 28px 省下的 128px 没有
+ * 别的用途。 */
+
+/* ---- 布局页：flex 的填充与折行（`guide/layout.rs`）----
+ *
+ * flex 不是第三种排布词汇：容器**显式声明** `flex-direction` 或 `flex-wrap`
+ * 之后，那一个容器才从 Stack 切到分配路径（grow / shrink / 折行 / 对齐）。
+ * 没声明的一律走 Stack，子项的 `flex-grow` 一概不生效 —— core 的门禁
+ * `layout_tests::a_container_without_flex_declarations_ignores_flex_grow`
+ * 钉住这条。所以这里的 `flex-direction` 是**开关**，不是装饰。
+ *
+ * `gap` 是 `spacing` 的 CSS 别名（同一条属性，编译器里映射到同一个键）。
+ * 这一页同时示范别名，省得读者以为要记两套名字。 */
+box.fx-row {
+    flex-direction: row;
+    gap: 10px;
+    /* 行宽定死才有 grow 可演示：右格拿走 420 − 100 − 10 = 310。
+     * 不给宽度的话容器按内容收窄，grow 没有自由空间，画面上什么都看不出。 */
+    width: 420px;
+}
+
+/* 折行演示：340 装得下 100+10+100+10+100 = 330，装不下第四个 → 折行。 */
+box.fx-wrap {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 340px;
+}
+
+/* 格子：宽 100 让折行位置可预测；高 56 是为了装下 `.card` 的 14px 内边距
+ * 加一行 12px 文字（44 会把文字压出下沿）。 */
+box.fx-cell {
+    width: 100px;
+    height: 56px;
+}
+
+/* 填充格：基数仍是 100，`flex-grow: 1` 让它吃掉行内余下的全部宽度。
+ * 与 `.fx-cell` 分开成两条规则，因为一个元素只在这两格里二选一。 */
+box.fx-grow {
+    width: 100px;
+    height: 56px;
+    flex-grow: 1;
+}
+
+box.page-slider {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+
+box.page-textinput {
+    direction: vertical;
+    spacing: 24px;
+    cross-align: stretch;
+}
+
+/* RinUI 目录补充控件页：9 行 DemoRow 纵向排开。 */
+box.page-catalog {
+    direction: vertical;
+    spacing: 16px;
+    cross-align: stretch;
+}
+
+/* 色板 + 所选颜色预览并排。 */
+box.color-row {
+    direction: horizontal;
+    spacing: 16px;
+    cross-align: center;
+}
+
+box.color-preview {
+    width: 48px;
+    height: 48px;
+    corner-radius: 12px;
+    corner-shape: superellipse(1.5);
+}
+
+/* 第二批 10 个控件页。 */
+box.page-catalog2 {
+    direction: vertical;
+    spacing: 16px;
+    cross-align: stretch;
+}
+
+/* 按钮直接变形为菜单（同一控件，无额外弹层元素）。
+ * 展开时切到绝对定位+菜单尺寸（浮动），坐标=窗口中心（菜单 220×114）。
+ * 注意：从流式切到 absolute 会移除该控件的占位，可能造成行内细微位移；
+ * “无额外元素 + 无位移 + 浮动”在当前引擎下无法仅靠样式同时满足。 */
+/* 同一控件变形：关闭时保持流式按钮占位；展开时变为绝对定位菜单（浮动）。
+ * extra_class 始终带 dd-morph / dd-morph-solid|glass，保证规则可匹配。 */
+/* dd-morph 类名的始终匹配规则在 shell.zstyle（与组件用法同域，便于门禁）。 */
+
+/* 展开态的绝对定位/菜单形态在 controls-forms.zstyle（控件层）定义，
+ * 避免 app_only 的“规则必须匹配”门禁要求在默认态命中 open-only 选择器。 */

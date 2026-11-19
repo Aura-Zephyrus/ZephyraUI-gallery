@@ -1,0 +1,15 @@
+{
+  "window": {
+    "frameless": true
+  },
+  "windows": {
+    "inspector": {
+      "title": "Inspector",
+      "width": 560,
+      "height": 720,
+      "frameless": true,
+      "tool_window": true,
+      "always_on_top": true
+    }
+  }
+}

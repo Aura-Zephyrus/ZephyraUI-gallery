@@ -1,0 +1,552 @@
+<component name="PageRoot" params="id cls">
+  <box key="{id}" class="{cls}">
+    <children/>
+  </box>
+</component>
+<component name="Section" params="id title">
+  <box key="{id}" class="section">
+    <TextLabel key="section-title" text="{title}" level="text-body-strong"/>
+    <box key="section-body" class="section-body">
+      <children/>
+    </box>
+  </box>
+</component>
+<component name="DemoRow" params="label slot_class">
+  <box key="{label}" class="demo-row">
+    <text key="{label}" text="{label}" class="demo-label"/>
+    <box key="{label}" class="demo-slot {slot_class}">
+      <children/>
+    </box>
+  </box>
+</component>
+<component name="PageGuide" params="">
+  <PageRoot key="guide" cls="page-guide">
+    <TextLabel key="guide-blurb" text="{tr('ui.click-the-button-the-count-goes-up-that-is-the-whole-pipeline')}" level="text-body"/>
+    <DemoRow label="{tr('ui.counter')}">
+      <Button key="guide-inc" label_key="ui.click-me" variant="accent"/>
+    </DemoRow>
+    <text key="guide-count" text="{@cnt_text}" class="text-title"/>
+  </PageRoot>
+</component>
+<component name="PageState" params="">
+  <PageRoot key="state" cls="page-state">
+    <TextLabel key="state-blurb" text="{tr('ui.wired-controls-change-state-on-click-display-only-controls-dont-thats-a-core-boundary-not-a-bug')}" level="text-body"/>
+    <Section key="state-wired" title="{tr('ui.wired-to-state')}">
+      <DemoRow label="{tr('ui.checkbox')}">
+        <CheckBox key="state-check" label_key="ui.check.toggle-me" state="{@demo_check}"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageStyling" params="">
+  <PageRoot key="styling" cls="page-styling">
+    <TextLabel key="styling-blurb" text="{tr('ui.appearance-lives-in-zstyle-source-sends-keys-and-class-names-only-no-colors-no-sizes')}" level="text-body"/>
+    <Section key="styling-tokens" title="{tr('ui.colors-come-from-theme-tokens')}">
+      <DemoRow label="{tr('ui.token-colored-text')}">
+        <TextLabel key="styling-note" text="{tr('ui.this-color-is-content-secondary')}" level="styling-note"/>
+      </DemoRow>
+    </Section>
+    <Section key="styling-classes" title="{tr('ui.class-names-are-selectors')}">
+      <DemoRow label="{tr('ui.primary')}">
+        <Button key="act:style-primary" label_key="ui.primary" variant="accent"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.subtle')}">
+        <Button key="act:style-subtle" label_key="ui.subtle" variant="subtle"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.standard')}">
+        <Button key="act:style-standard" label_key="ui.standard" variant="standard"/>
+      </DemoRow>
+    </Section>
+    <Section key="styling-layout" title="{tr('ui.layout-affecting-properties')}">
+      <DemoRow label="{tr('ui.spacing-demo')}">
+        <TextLabel key="styling-layout-note" text="{tr('ui.spacing-is-declared-affects-layout-so-color-only-changes-skip-relayout')}" level="text-caption"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageLayout" params="">
+  <PageRoot key="layout" cls="page-layout">
+    <TextLabel key="layout-blurb" text="{tr('ui.flex-rows-that-grow-and-wrap-and-the-one-boundary-that-is-still-real-no-scroll')}" level="text-body"/>
+    <Section key="layout-flex" title="{tr('ui.flexbox-rows-that-grow-and-wrap')}">
+      <DemoRow label="{tr('ui.flex-grow-1-fills-the-row-and-flex-wrap-packs-items-into-lines')}">
+        <PageRoot key="fx-grow-demo" cls="fx-row">
+          <box key="fx-fixed" class="fx-cell">
+            <TextLabel key="fx-fixed-t" text="{tr('ui.fixed')}" level="text-caption"/>
+          </box>
+          <box key="fx-grow-cell" class="fx-grow">
+            <TextLabel key="fx-grow-t" text="{tr('ui.grows')}" level="text-caption"/>
+          </box>
+        </PageRoot>
+        <PageRoot key="fx-wrap-demo" cls="fx-wrap">
+          <box key="fx-w1" class="fx-cell"/>
+          <box key="fx-w2" class="fx-cell"/>
+          <box key="fx-w3" class="fx-cell"/>
+          <box key="fx-w4" class="fx-cell"/>
+          <box key="fx-w5" class="fx-cell"/>
+          <box key="fx-w6" class="fx-cell"/>
+        </PageRoot>
+      </DemoRow>
+    </Section>
+    <Section key="layout-breakpoints" title="{tr('ui.breakpoints-small-medium-large')}">
+      <DemoRow label="{tr('ui.current-breakpoint')}">
+        <TextLabel key="layout-bp" text="{@bp_text}" level="text-body-strong"/>
+      </DemoRow>
+    </Section>
+    <Section key="layout-touch" title="{tr('ui.touch-targets-need-44-epx')}">
+      <DemoRow label="{tr('ui.44-epx-correct')}">
+        <Button key="act:touch-ok" label_key="ui.big-enough" variant="standard"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.28-epx-too-small')}">
+        <RoundButton key="act:touch-bad" label_key="ui.tiny"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageTheme" params="">
+  <PageRoot key="theme" cls="page-theme">
+    <TextLabel key="theme-blurb" text="{tr('ui.theme-is-an-intent-not-a-reference-language-negotiates-from-system-prefs-then-manual-choice-wins')}" level="text-body"/>
+    <Section key="theme-i18n" title="{tr('ui.language-en-zh-hans-ja')}">
+      <DemoRow label="English">
+        <PillButton key="lang:en" label="English" checked="{(@lang == 0.0)}"/>
+      </DemoRow>
+      <DemoRow label="中文">
+        <PillButton key="lang:zh-Hans" label="中文" checked="{(@lang == 1.0)}"/>
+      </DemoRow>
+      <DemoRow label="日本語">
+        <PillButton key="lang:ja" label="日本語" checked="{(@lang == 2.0)}"/>
+      </DemoRow>
+    </Section>
+    <Section key="theme-current" title="{tr('ui.current-locale')}">
+      <DemoRow label="{tr('ui.you-are-here')}">
+        <TextLabel key="theme-locale" text="{@locale_name}" level="text-body-strong"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageTesting" params="">
+  <PageRoot key="testing" cls="page-testing">
+    <TextLabel key="testing-blurb" text="{tr('ui.three-layers-of-self-verification-from-fastest-to-slowest-each-guards-a-different-class-of-silent-failure')}" level="text-body"/>
+    <Section key="testing-current" title="{tr('ui.current-state')}">
+      <DemoRow label="{tr('ui.route')}">
+        <TextLabel key="testing-route" text="{@route}" level="text-body"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.language')}">
+        <TextLabel key="testing-lang" text="{@locale_name}" level="text-body"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.theme')}">
+        <TextLabel key="testing-theme" text="{@theme_text}" level="text-body"/>
+      </DemoRow>
+    </Section>
+    <Section key="testing-zstyle" title="{tr('ui.1-stylesheet-syntax')}">
+      <DemoRow label="{tr('ui.check-a-stylesheet')}">
+        <TextLabel key="testing-zstyle-cmd" text="cargo run -p zstylec -- check pages.zstyle" level="text-caption"/>
+      </DemoRow>
+    </Section>
+    <Section key="testing-dump" title="{tr('ui.2-cpu-raster-dump')}">
+      <DemoRow label="{tr('ui.dump-current-route')}">
+        <TextLabel key="testing-dump-cmd" text="cargo run -p zephyra-gallery --bin gallery -- --dump-cpu" level="text-caption"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.dump-a-specific-route')}">
+        <TextLabel key="testing-dump-route" text="  --route reference --lang zh-Hans" level="text-caption"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.dump-one-reference-family')}">
+        <TextLabel key="testing-dump-family" text="  --family 3   # --list-families 列合法值" level="text-caption"/>
+      </DemoRow>
+    </Section>
+    <Section key="testing-gates" title="{tr('ui.3-tree-level-gates')}">
+      <DemoRow label="{tr('ui.run-all-gallery-gates')}">
+        <TextLabel key="testing-gates-cmd" text="cargo test -p zephyra-gallery" level="text-caption"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.what-they-guard')}">
+        <TextLabel key="testing-gates-what" text="{tr('ui.style-tokens-dead-rules-hit-test-breakpoints-no-appearance-in-source')}" level="text-caption"/>
+      </DemoRow>
+    </Section>
+    <Section key="testing-try" title="{tr('ui.try-it-switch-language-same-state-as-lang')}">
+      <DemoRow label="{tr('ui.language')}">
+        <for var="e" index="i" list="@langs">
+          <PillButton key="{e.id}" label="{e.label}" checked="{(@lang == i)}"/>
+        </for>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageReference" params="">
+  <PageRoot key="reference" cls="page-reference">
+    <TextLabel key="reference-blurb" text="{tr('ui.control-reference-pick-a-family-to-see-its-controls')}" level="text-body"/>
+    <Segmented key="ref-family" items="{@ref_segs}" sel="{@ref_sel}"/>
+    <if cond="(@ref_family == 0.0)">
+      <PageButtons/>
+    </if>
+    <if cond="(@ref_family == 1.0)">
+      <PageCheckbox/>
+    </if>
+    <if cond="(@ref_family == 2.0)">
+      <PageSwitches/>
+    </if>
+  </PageRoot>
+</component>
+<component name="PageButtons" params="">
+  <PageRoot key="buttons" cls="page-buttons">
+    <Section key="sec-btns" title="{tr('ui.button')}">
+      <DemoRow label="{tr('ui.variants')}">
+        <Button key="act:standard" label_key="ui.standard" variant="standard"/>
+        <Button key="act:accent" label_key="ui.accent" variant="accent"/>
+        <Button key="act:subtle" label_key="ui.subtle" variant="subtle"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.with-icon-round')}">
+        <Button key="act:send" label_key="ui.send" icon="pen" variant="accent"/>
+        <PillButton key="pill-a" label_key="ui.pill" icon="star" checked="{@pill_on}"/>
+        <RoundButton key="round-a" label="" icon="chevron-up"/>
+        <RoundButton key="round-b" label="" icon="close" checked="{true}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.materials')}">
+        <Button key="act:solid" label_key="ui.solid" variant="standard"/>
+        <Button key="act:frosted" label_key="ui.frosted" variant="standard" material="frosted"/>
+        <Button key="act:glass" label_key="ui.glass" variant="subtle" material="glass"/>
+      </DemoRow>
+    </Section>
+    <Section key="sec-liquid-btn" title="{tr('ui.liquid-button')}">
+      <TextLabel key="liquid-blurb" text="{tr('ui.liquid.demo')}" level="text-caption"/>
+      <DemoRow label="{tr('ui.solid')}">
+        <LiquidButton key="liquid:btn:solid" label_key="ui.solid" material="solid" scale_x="{@lbtn_s_sx}" scale_y="{@lbtn_s_sy}" translate_x="{@lbtn_s_tx}" translate_y="{@lbtn_s_ty}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.glass')}">
+        <LiquidButton key="liquid:btn:glass" label_key="ui.glass" material="glass" scale_x="{@lbtn_g_sx}" scale_y="{@lbtn_g_sy}" translate_x="{@lbtn_g_tx}" translate_y="{@lbtn_g_ty}" background="{@lbtn_g_bg}" filter="{@lbtn_g_filter}" decoration="{@lbtn_g_decoration}"/>
+      </DemoRow>
+    </Section>
+    <Section key="sec-liquid-dd" title="{tr('ui.dropdown-button')}">
+      <DemoRow label="{tr('ui.solid')}" slot_class="dd-slot">
+        <DropDownButton key="liquid:dd:solid" label_key="ui.options" open="{@ldd_s_visible}" logical_open="{@ldd_s_open}" show_items="{@ldd_s_reveal}" entries="{@ldd_s_entries}" material="solid" extra_class="{@ldd_s_motion}" scale_x="{@ldd_s_menu_sx}" scale_y="{@ldd_s_menu_sy}" translate_x="{@ldd_s_menu_tx}" translate_y="{@ldd_s_menu_ty}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.glass')}" slot_class="dd-slot">
+        <DropDownButton key="liquid:dd:glass" label_key="ui.options" open="{@ldd_g_visible}" logical_open="{@ldd_g_open}" show_items="{@ldd_g_reveal}" entries="{@ldd_g_entries}" material="glass" extra_class="{@ldd_g_motion}" scale_x="{@ldd_g_menu_sx}" scale_y="{@ldd_g_menu_sy}" translate_x="{@ldd_g_menu_tx}" translate_y="{@ldd_g_menu_ty}" background="{@ldd_g_bg}" filter="{@ldd_g_filter}" decoration="{@ldd_g_decoration}"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageCheckbox" params="">
+  <PageRoot key="checkbox" cls="page-checkbox">
+    <Section key="sec-check" title="{tr('ui.checkbox')}">
+      <DemoRow label="{tr('ui.multiple')}">
+        <CheckBoxGroup gkey="group:checks" label_key="{@check_group_header_key}" items="{@check_group_items}" state="{@check_group_state}"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageSwitches" params="">
+  <PageRoot key="switches" cls="page-switches">
+    <Section key="sec-switch" title="{tr('ui.switch')}">
+      <DemoRow label="{tr('ui.toggle')}">
+        <ToggleSwitch key="switch:demo" label_key="ui.switch.airplane-mode" material="glass" checked="{@switch_demo_on}" knob_x="{@switch_knob_x}" knob_scale_x="{@switch_knob_scale_x}" knob_scale_y="{@switch_knob_scale_y}" knob_bg="{@switch_knob_bg}" knob_filter="{@switch_knob_filter}" knob_decoration="{@switch_knob_decoration}" animated="animated"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.materials')}">
+        <ToggleSwitch key="switch:solid" label_key="ui.solid" material="solid" checked="{@switch_solid_on}" knob_x="{@switch_solid_x}" knob_bg="{@switch_solid_knob_bg}" animated="animated"/>
+        <ToggleSwitch key="switch:glass" label_key="ui.glass" material="glass" checked="{@switch_glass_on}" knob_x="{@switch_glass_x}" knob_scale_x="{@switch_glass_scale_x}" knob_scale_y="{@switch_glass_scale_y}" knob_bg="{@switch_glass_knob_bg}" knob_filter="{@switch_glass_knob_filter}" knob_decoration="{@switch_glass_knob_decoration}" animated="animated"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.radio')}">
+        <for var="e" list="@radio_items">
+          <RadioButton key="{e.id}" label_key="{e.label_key}" checked="{e.checked}"/>
+        </for>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageMaterials" params="">
+  <PageRoot key="materials" cls="page-materials">
+    <TextLabel key="materials-blurb" text="{tr('ui.materials-on-a-real-photo')}" level="text-body"/>
+    <Section key="sec-materials" title="{tr('ui.materials-and-liquid-glass')}">
+      <GlassParams/>
+      <GlassDecor/>
+      <MaterialBoard/>
+      <DemoRow label="{tr('ui.materials')}">
+        <ToggleSwitch key="mat:solid" label_key="ui.solid" material="solid" checked="{@mat_solid_on}" knob_x="{@mat_solid_x}" knob_bg="{@mat_solid_knob_bg}" animated="animated"/>
+        <ToggleSwitch key="mat:glass" label_key="ui.glass" material="glass" checked="{@mat_glass_on}" knob_x="{@mat_glass_x}" knob_scale_x="{@mat_glass_scale_x}" knob_scale_y="{@mat_glass_scale_y}" knob_bg="{@mat_glass_knob_bg}" knob_filter="{@mat_glass_knob_filter}" knob_decoration="{@mat_glass_knob_decoration}" animated="animated"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="GlassParams" params="">
+  <PageRoot key="glass-params" cls="glass-params">
+    <for var="p" list="@glass_params">
+      <PageRoot key="cell" cls="glass-param">
+        <TextLabel key="{p.label}" text="{p.label}" level="glass-param-label"/>
+        <RoundButton key="{p.dec}" label="-"/>
+        <TextLabel key="v" text="{p.value}" level="glass-param-value"/>
+        <RoundButton key="{p.inc}" label="+"/>
+      </PageRoot>
+    </for>
+  </PageRoot>
+</component>
+<component name="GlassDecor" params="">
+  <PageRoot key="glass-decor" cls="glass-decor-row">
+    <ToggleSwitch key="glass:decor" label_key="ui.decorations" material="glass" checked="{@glass_decor_on}" knob_x="{@glass_decor_knob_x}" knob_scale_x="{@glass_decor_knob_scale_x}" knob_scale_y="{@glass_decor_knob_scale_y}" knob_bg="{@glass_decor_knob_bg}" knob_filter="{@glass_decor_knob_filter}" knob_decoration="{@glass_decor_knob_decoration}" animated="animated"/>
+    <!-- 算法切换：默认原版液态玻璃（`lens()` 逐字转译，背景被掰弯），
+         一键切到廉价像素偏移（不采样背景 ⇒ 不拷全屏副本）。斯涅尔四参数
+         那条路仍完整保留在 `GlassMode::Physical`。 -->
+    <RoundButton key="glass:mode" label_key="{@glass_mode_label_key}" checked="{@glass_mode_checked}"/>
+  </PageRoot>
+</component>
+<component name="MaterialBoard" params="">
+  <PageRoot key="material-board" cls="material-board">
+    <MaterialSwatches/>
+    <GlassPanes/>
+  </PageRoot>
+</component>
+<component name="MaterialSwatches" params="">
+  <PageRoot key="material-swatches" cls="material-swatches">
+    <box key="swatch:solid" class="material-swatch material-solid">
+      <box key="chip:solid" class="photo-chip">
+        <TextLabel key="sw:solid" text="{tr('ui.solid')}" level="photo-chip-text"/>
+      </box>
+    </box>
+    <box key="swatch:frosted" class="material-swatch material-frosted">
+      <box key="chip:frosted" class="photo-chip">
+        <TextLabel key="sw:frosted" text="{tr('ui.frosted')}" level="photo-chip-text"/>
+      </box>
+    </box>
+    <box key="swatch:glass" class="material-swatch material-glass">
+      <box key="chip:glass" class="photo-chip">
+        <TextLabel key="sw:glass" text="{tr('ui.glass')}" level="photo-chip-text"/>
+      </box>
+    </box>
+  </PageRoot>
+</component>
+<component name="GlassPanes" params="">
+  <PageRoot key="glass-panes" cls="glass-panes">
+    <PageRoot key="cell" cls="glass-cell">
+      <box key="glass:a" filter="{@glass_filter_0}" decoration="{@glass_decorations}" class="glass-pane"/>
+      <box key="gt:a" class="photo-chip">
+        <TextLabel key="gt:a" text="{tr('ui.thin')}" level="glass-title"/>
+      </box>
+    </PageRoot>
+    <PageRoot key="cell" cls="glass-cell">
+      <box key="glass:b" filter="{@glass_filter_1}" decoration="{@glass_decorations}" class="glass-pane"/>
+      <box key="gt:b" class="photo-chip">
+        <TextLabel key="gt:b" text="{tr('ui.normal')}" level="glass-title"/>
+      </box>
+    </PageRoot>
+    <PageRoot key="cell" cls="glass-cell">
+      <box key="glass:c" filter="{@glass_filter_2}" decoration="{@glass_decorations}" class="glass-pane"/>
+      <box key="gt:c" class="photo-chip">
+        <TextLabel key="gt:c" text="{tr('ui.thick')}" level="glass-title"/>
+      </box>
+    </PageRoot>
+  </PageRoot>
+</component>
+
+<component name="PageSlider" params="">
+  <PageRoot key="slider" cls="page-slider">
+    <TextLabel key="slider-blurb" text="{tr('ui.slider.demo')}" level="text-body"/>
+    <Section key="sec-slider" title="{tr('ui.slider')}">
+      <DemoRow label="{tr('ui.solid')}">
+        <Slider key="slider:solid" label="{@slider_solid_value}" label_key="ui.slider.volume" fill_w="{@slider_solid_fill_w}" thumb_x="{@slider_solid_thumb_x}" thumb_scale_x="{@slider_solid_thumb_sx}" thumb_scale_y="{@slider_solid_thumb_sy}" thumb_bg="{@slider_solid_thumb_bg}" animated="animated" material="solid"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.glass')}">
+        <Slider key="slider:glass" label="{@slider_glass_value}" label_key="ui.slider.brightness" fill_w="{@slider_glass_fill_w}" thumb_x="{@slider_glass_thumb_x}" thumb_scale_x="{@slider_glass_thumb_sx}" thumb_scale_y="{@slider_glass_thumb_sy}" thumb_bg="{@slider_glass_thumb_bg}" thumb_filter="{@slider_glass_thumb_filter}" thumb_decoration="{@slider_glass_thumb_decoration}" animated="animated" material="glass"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageTextInput" params="">
+  <PageRoot key="textinput" cls="page-textinput">
+    <TextLabel key="textinput-blurb" text="{tr('ui.textinput.blurb')}" level="text-body"/>
+    <Section key="sec-textfield" title="{tr('ui.textfield')}">
+      <DemoRow label="{tr('ui.single-line')}">
+        <TextField key="text:field" value="{@text_field_value}" placeholder="{tr('ui.textinput.placeholder')}" cursor="{@text_field_cursor}" selection_begin="{@text_field_sel_begin}" selection_end="{@text_field_sel_end}" scroll_x="{@text_field_scroll}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.actions')}">
+        <RoundButton key="text:select-all" label_key="ui.select-all"/>
+        <RoundButton key="text:copy" label_key="ui.copy"/>
+        <RoundButton key="text:paste" label_key="ui.paste"/>
+      </DemoRow>
+    </Section>
+    <Section key="sec-ime" title="{tr('ui.ime')}">
+      <TextLabel key="ime-hint" text="{tr('ui.ime.hint')}" level="text-caption"/>
+      <TextLabel key="ime-state" text="{@ime_state_text}" level="text-body"/>
+    </Section>
+  </PageRoot>
+</component>
+<component name="PageScroll" params="">
+  <PageRoot key="scroll" cls="page-scroll">
+    <TextLabel key="scroll-blurb" text="{tr('ui.scroll.blurb')}" level="text-body"/>
+    <Section key="sec-scroll" title="{tr('ui.scroll')}">
+      <DemoRow label="{tr('ui.scroll.drag')}">
+        <!-- 滚动容器 + 滚动条并排。容器本体可拖；滚动条的拇指也可拖。 -->
+        <box key="scroll-wrap" class="scroll-wrap">
+          <ScrollView key="scroll:demo" scroll_x="{@scroll_x}" scroll_y="{@scroll_y}">
+            <for var="i" index="ix" list="@scroll_items">
+              <box key="{'item:' + str(ix)}" class="scroll-item">
+                <TextLabel key="item-title" text="{'#' + str(ix + 1)}" level="text-body"/>
+                <TextLabel key="item-hint" text="{tr('ui.scroll.item-hint')}" level="text-caption"/>
+              </box>
+            </for>
+          </ScrollView>
+          <ScrollBar key="scroll:bar" thumb_len="{@scroll_thumb_len}" thumb_pos="{@scroll_thumb_pos}"/>
+        </box>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+<!-- RinUI 目录补充控件页：每个 DemoRow 对应一个已存在模板 + 本轮新增的 Rust 状态模型。 -->
+<component name="PageCatalog" params="">
+  <PageRoot key="catalog" cls="page-catalog">
+    <TextLabel key="catalog-blurb" text="{tr('ui.catalog.blurb')}" level="text-body"/>
+    <Section key="sec-catalog" title="{tr('ui.catalog.title')}">
+      <DemoRow label="{tr('ui.catalog.progress')}">
+        <ProgressBar key="catalog:progress" value01="{@catalog_progress}" state="{@catalog_progress_state}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.ring')}">
+        <ProgressRing key="catalog:ring" value="{@catalog_ring_text}" state="{@catalog_ring_state}" show_value="{false}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.infobar')}">
+        <InfoBar key="catalog:bar" title="{tr('ui.catalog.bar-title')}" text="{tr('ui.catalog.bar-text')}" severity="info" closable="{@catalog_bar_open}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.color')}">
+        <box key="catalog:color-row" class="color-row">
+          <ColorPicker key="catalog:color" sel="{@catalog_color_sel}" state="{@catalog_color_state}"/>
+          <box key="catalog:color-preview" class="color-preview {@catalog_color_preview}"/>
+        </box>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.spin')}">
+        <SpinBox key="catalog:spin" value="{@catalog_spin_text}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.busy')}">
+        <BusyIndicator key="catalog:busy" path="{@catalog_busy_path}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.expander')}">
+        <Expander key="catalog:expander" title="{tr('ui.catalog.expander-title')}" expanded="{@catalog_expanded}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.selector')}">
+        <SelectorBar key="catalog:selector" items="{@catalog_selector_items}" sel="{@catalog_selector_sel}" state="{@catalog_selector_state}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.catalog.avatar')}">
+        <Avatar key="catalog:avatar" initials="{@catalog_avatar_initials}" accent="{true}"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+
+<!-- RinUI 目录第二批 10 个控件。每个控件的状态流转住在 zephyra_ui::catalog。 -->
+<component name="PageCatalog2" params="">
+  <PageRoot key="catalog2" cls="page-catalog2">
+    <TextLabel key="catalog2-blurb" text="{tr('ui.c2.blurb')}" level="text-body"/>
+    <Section key="sec-catalog2" title="{tr('ui.c2.title')}">
+      <DemoRow label="{tr('ui.c2.toggle')}">
+        <ToggleButton key="c2:toggle" label_key="ui.c2.toggle-label" checked="{@c2_toggle}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.pill')}">
+        <PillButton key="c2:pill" label_key="ui.c2.pill-label" icon="star" checked="{@c2_pill}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.tool')}">
+        <ToolButton key="c2:tool" icon="gear" highlighted="{@c2_tool_highlight}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.link')}">
+        <Hyperlink key="c2:link" text="{tr('ui.c2.link-label')}" url="https://ui.rinlit.cn/zh/" visited="{@c2_link_visited}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.badge')}">
+        <InfoBadge key="c2:badge" text="{@c2_badge_text}" severity="success" solid="{true}"/>
+        <RoundButton key="c2:badge-inc" label_key="ui.c2.inc" checked="{@c2_badge_btn}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.tip')}">
+        <RoundButton key="c2:tip-target" label_key="ui.c2.tip-target" icon="bell" checked="{@c2_tip_btn}"/>
+        <ToolTip key="c2:tip" text="{tr('ui.c2.tip-text')}" visible="{@c2_tip_visible}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.pages')}">
+        <PageIndicator key="c2:pages" count="{@c2_pages_count}" current="{@c2_pages_current}"/>
+        <RoundButton key="c2:pages-next" label_key="ui.c2.next" checked="{@c2_pages_btn}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.setting')}">
+        <SettingItem key="c2:setting" icon="settings" title="{tr('ui.c2.setting-title')}" desc="{tr('ui.c2.setting-desc')}" clickable="{@c2_setting_clickable}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.setexp')}">
+        <SettingExpander key="c2:setexp" title="{tr('ui.c2.setexp-title')}" desc="{tr('ui.c2.setexp-desc')}" expanded="{@c2_setexp_open}"/>
+      </DemoRow>
+      <DemoRow label="{tr('ui.c2.card')}">
+        <Card key="c2:card" extra="{@c2_card_state}">
+          <TextLabel key="c2:card-label" text="{tr('ui.c2.card-label')}" level="text-body"/>
+        </Card>
+        <RoundButton key="c2:card-toggle" label_key="ui.c2.toggle-label" checked="{@c2_card_btn}"/>
+      </DemoRow>
+    </Section>
+  </PageRoot>
+</component>
+
+<page name="Window">
+  <box key="window" class="window">
+    <box key="titlebar" class="titlebar">
+      <TextLabel key="app-title" text="{tr('ui.zephyraui-gallery')}" level="text-body-strong"/>
+      <box key="search" class="search">
+        <box key="search-icon" icon="search" class="search-icon"/>
+        <TextLabel key="search-hint" text="{tr('ui.search-controls-and-samples')}" level="text-caption"/>
+      </box>
+      <box key="caption" class="caption-bar">
+        <for var="c" list="@caps">
+          <control key="{c.key}" interactive="true" class="caption-btn {c.close ? 'close' : ''} {(press(c.key) ? 'pressed' : (hover(c.key) ? 'hovered' : ''))}">
+            <box key="icon" icon="{c.icon}" class="caption-icon"/>
+          </control>
+        </for>
+      </box>
+    </box>
+    <box key="body" class="body">
+      <box key="nav" class="nav-pane {@compact ? 'compact' : ''}">
+        <for var="r" list="@routes">
+          <NavItem key="{r.id}" label="{r.label}" icon="{r.icon}" selected="{(r.id == @route)}" compact="{@compact}"/>
+        </for>
+      </box>
+      <box key="content" class="content-card">
+        <box key="header" class="page-header">
+          <box key="header-title" class="header-title">
+            <TextLabel key="page-title" text="{@route_title}" level="text-title"/>
+            <InfoBadge key="page-badge" text="12" severity="info" solid="{true}"/>
+          </box>
+          <box key="header-tools" class="header-tools">
+            <TextLabel key="last-action" text="{@last_action}" level="text-caption"/>
+            <ToolButton key="theme-toggle" icon="light"/>
+            <Button key="act:feedback" label_key="action.feedback" icon="bell" variant="subtle"/>
+          </box>
+        </box>
+        <box key="page" class="page {@enter_class}">
+          <if cond="(@route == 'guide')">
+            <PageGuide/>
+          </if>
+          <if cond="(@route == 'state')">
+            <PageState/>
+          </if>
+          <if cond="(@route == 'styling')">
+            <PageStyling/>
+          </if>
+          <if cond="(@route == 'layout')">
+            <PageLayout/>
+          </if>
+          <if cond="(@route == 'theme')">
+            <PageTheme/>
+          </if>
+          <if cond="(@route == 'testing')">
+            <PageTesting/>
+          </if>
+          <if cond="(@route == 'reference')">
+            <PageReference/>
+          </if>
+          <if cond="(@route == 'materials')">
+            <PageMaterials/>
+          </if>
+          <if cond="(@route == 'slider')">
+            <PageSlider/>
+          </if>
+          <if cond="(@route == 'textinput')">
+            <PageTextInput/>
+          </if>
+          <if cond="(@route == 'scroll')">
+            <PageScroll/>
+          </if>
+          <if cond="(@route == 'catalog')">
+            <PageCatalog/>
+          </if>
+          <if cond="(@route == 'catalog2')">
+            <PageCatalog2/>
+          </if>
+        </box>
+      </box>
+    </box>
+  </box>
+</page>

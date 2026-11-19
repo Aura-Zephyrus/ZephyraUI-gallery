@@ -1,0 +1,108 @@
+[workspace]
+resolver = "2"
+
+# 独立仓：gallery 单向依赖主仓 E:\ZephyraUI（crate + build.rs/tests 读取
+# ZephyraUI/ui/controls.zypui）。主仓不依赖本仓。
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.87"
+
+[package]
+name = "zephyra-gallery"
+description = "ZephyraUI gallery: the reference application for the zephyra-ui widget layer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+# 这是**应用**，不是库。它与 `ZephyraUI/`（控件层）的分工：
+#
+#   ZephyraUI/   控件长什么样 —— 产出 Element，零后端依赖
+#   gallery/     谁把它们摆在哪一页 —— 路由、状态、宿主、呈现
+#
+# # 后端由 feature 选，一个二进制只编一个
+#
+# 三个后端互不依赖（`zephyra-base/README.md` 有逐条理由），所以
+# d3d12 / d3d11 / linux-vk **互斥**。同时开两个会编进两套图形栈，
+# 而「画面一空时是哪个后端的问题」就没法回答了。
+[features]
+default = ["d3d12"]
+d3d12 = ["dep:zephyra-winit-d3d12"]
+d3d11 = ["dep:zephyra-winit"]
+# Linux 后端（winit + 裸 Vulkan/ash）。与上面两个互斥。
+linux-vk = ["dep:zephyra-vulkan"]
+
+[dependencies]
+zephyra-core = { path = "../ZephyraUI/zephyra/zephyra-core" }
+zephyra-fx = { path = "../ZephyraUI/zephyra/zephyra-fx" }
+zephyra-style = { path = "../ZephyraUI/zephyra/zephyra-style" }
+zephyra-ui = { path = "../ZephyraUI/ZephyraUI" }
+zstyle-compile = { path = "../ZephyraUI/zstyle-compile" }
+zypui = { path = "../ZephyraUI/zypui" }
+
+# 背景照片的解码器。材质 / 液态玻璃那页的背景板是一张真实照片，
+# 编译期内嵌 JPEG、运行时解成 RGBA8 上传 GPU（见 `src/bin/main.rs`）。
+#
+# `default-features = false` 关掉 rayon：解码只在建窗那一刻跑一次，
+# 拉一个并行池进来不值当（而 rayon 会拖进一串额外依赖）。
+jpeg-decoder = { version = "0.3", default-features = false }
+
+# 平台能力抽象（窗口外观：暗色 / 圆角 / Mica）。应用只依赖 trait，
+# Windows 的实现与 Linux 的降级都在实现 crate 里。
+zephyra-platform = { path = "../ZephyraUI/zephyra/zephyra-base/zephyra-platform" }
+
+# 演示宿主：真开窗口 + GPU 渲染。只有 bin 用它，库层不依赖任何后端。
+zephyra-winit-d3d12 = { path = "../ZephyraUI/zephyra/zephyra-base/zephyra-winit-d3d12", optional = true }
+# 窗口集合（多窗口）。与渲染后端无关 —— d3d12 / d3d11 / linux-vk 共用同一个
+# `WindowSet`，各后端只提供 `Backend` 实现。
+zephyra-window = { path = "../ZephyraUI/zephyra/zephyra-base/zephyra-window" }
+zephyra-winit = { path = "../ZephyraUI/zephyra/zephyra-base/zephyra-winit", optional = true }
+zephyra-vulkan = { path = "../ZephyraUI/zephyra/zephyra-base/zephyra-vulkan", optional = true }
+winit = "0.30"
+
+[build-dependencies]
+zypui-compile = { path = "../ZephyraUI/zypui-compile" }
+
+[dev-dependencies]
+# 无障碍树的门禁：证明「画出来的那棵树」能派生出正确的无障碍树
+# （角色 / 名字 / 开关状态 / 禁用）。
+#
+# `zephyra-uia` 的**规则层是平台中立**的（COM 那一半在 `cfg(windows)` 的
+# `provider` 模块里），于是这条门禁在 Linux CI 上也跑得了 —— 而「规则对不对」
+# 恰恰是最该能在任何机器上断言的东西。
+zephyra-uia = { path = "../ZephyraUI/zephyra/zephyra-base/extra/zephyra-uia" }
+
+[[bin]]
+name = "gallery"
+# ⚠ 没有 `required-features`：Cargo 的 `required-features` 是**与**语义，
+# 表达不了「d3d12 或 linux-vk」，而 Linux 上 d3d12 是空 crate ——
+# 照原样写等于这个 bin 在 Linux 上永远不存在。
+# 后端改由 `src/bin/main.rs` 里的 `#[cfg(feature)]` 分流。
+path = "src/bin/main.rs"
+
+# 文字链探针：不开窗口，直接量「一段文本 → 排版 → 图集 → 顶点」。
+# 存在理由：字形串味/错位在成品图里只是"字看起来不对"，没有数字可对；
+# 这个 bin 把每个字符的 uv、advance、measured size 全打出来。
+[[bin]]
+name = "text-probe"
+path = "src/bin/text_probe.rs"
+
+[lib]
+name = "zephyra_gallery"
+path = "src/lib.rs"
+
+[lints.rust]
+# ⚠ 这里**不能** `forbid(unsafe_code)`。
+#
+# `src/alloc_probe.rs` 实现 `GlobalAlloc`（数每帧分配次数），而那个 trait 的
+# 方法签名就是 `unsafe fn` —— 没有 unsafe 就**不可能**实现它。
+#
+# 所以改成 `deny`（可以按模块豁免）而不是 `forbid`（一格都不许）：
+# 下面 `alloc_probe` 模块单独 `#![allow(unsafe_code)]`，其余代码仍然全禁。
+#
+# 判据与仓库其余部分一致：**unsafe 只允许出现在「必须直接碰系统/运行时」
+# 的那一小块里**，且那一块要能一眼指出来。
+unsafe_code = "deny"
