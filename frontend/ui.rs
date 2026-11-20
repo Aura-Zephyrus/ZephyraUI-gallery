@@ -15,9 +15,15 @@
 
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(debug_assertions)]
+use zephyra_fx::dev_reload::Reloadable;
 use zypui::{Interner, Ui, UiRuntime};
 
 static SHELL: OnceLock<Ui> = OnceLock::new();
+// debug：UiRuntime 可整体替换（dev 热重载）；release：仍是不可变的 OnceLock。
+#[cfg(debug_assertions)]
+static SHELL_RT: OnceLock<Reloadable<Mutex<UiRuntime>>> = OnceLock::new();
+#[cfg(not(debug_assertions))]
 static SHELL_RT: OnceLock<Mutex<UiRuntime>> = OnceLock::new();
 /// 表达式求值的字符串去重器（动态 key / class 的 `&'static` 来源）。
 ///
@@ -36,8 +42,44 @@ pub fn shell() -> &'static Ui {
 }
 
 /// P1 per-element 运行时（build cache）。与 `shell()` 共享同源 IR 形态，但各自持有实例。
+#[cfg(debug_assertions)]
+pub fn shell_runtime() -> &'static Reloadable<Mutex<UiRuntime>> {
+    SHELL_RT
+        .get_or_init(|| Reloadable::new(Mutex::new(UiRuntime::new(load_raw()).expect("组件重名"))))
+}
+#[cfg(not(debug_assertions))]
 pub fn shell_runtime() -> &'static Mutex<UiRuntime> {
     SHELL_RT.get_or_init(|| Mutex::new(UiRuntime::new(load_raw()).expect("组件重名")))
+}
+
+/// dev 热重载：从源文件重新解析 .zypui，整体替换运行中的 UiRuntime。
+///
+/// release 构建里本函数不存在（cfg 剔除）；发布路径永远走 `include_bytes!`。
+#[cfg(debug_assertions)]
+pub fn reload_from_sources() -> Result<(), String> {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let controls = manifest.join("../ZephyraUI/ZephyraUI/ui/controls.zypui");
+    let shell = manifest.join("frontend/shell.zypui");
+    let controls_src =
+        std::fs::read_to_string(&controls).map_err(|e| format!("读 controls.zypui 失败: {e}"))?;
+    let shell_src =
+        std::fs::read_to_string(&shell).map_err(|e| format!("读 shell.zypui 失败: {e}"))?;
+    let controls_name: &'static str = Box::leak(controls.display().to_string().into_boxed_str());
+    let shell_name: &'static str = Box::leak(shell.display().to_string().into_boxed_str());
+    let raw = zypui_compile::parse_all(&[
+        (controls_name, controls_src.as_str()),
+        (shell_name, shell_src.as_str()),
+    ])
+    .map_err(|diags| {
+        diags
+            .iter()
+            .map(|d| d.render())
+            .collect::<Vec<_>>()
+            .join("\n")
+    })?;
+    let rt = UiRuntime::new(raw).map_err(|e| format!("UiRuntime::new 失败: {e}"))?;
+    shell_runtime().replace(Mutex::new(rt));
+    Ok(())
 }
 
 /// 每帧一棵树：`Window` 页实例化（P1 per-element cache 路径）。
@@ -46,6 +88,11 @@ pub fn window<H: zypui::Host>(host: &H) -> zephyra_core::element::Element {
         .get_or_init(|| Mutex::new(Interner::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    #[cfg(debug_assertions)]
+    let rt_guard = shell_runtime().get();
+    #[cfg(debug_assertions)]
+    let mut rt = rt_guard.lock().unwrap_or_else(|e| e.into_inner());
+    #[cfg(not(debug_assertions))]
     let mut rt = shell_runtime().lock().unwrap_or_else(|e| e.into_inner());
     let root = rt
         .resolve_page("Window", host, &mut it)

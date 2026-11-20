@@ -42,6 +42,9 @@ zephyra-style = { path = "../ZephyraUI/zephyra/zephyra-style" }
 zephyra-ui = { path = "../ZephyraUI/ZephyraUI" }
 zstyle-compile = { path = "../ZephyraUI/zstyle-compile" }
 zypui = { path = "../ZephyraUI/zypui" }
+# dev 热重载时才在运行时调 parse_all；发布路径继续走 build.rs 的编译产物。
+# 代码本身由 #[cfg(debug_assertions)] 剔除，release 不会调用它。
+zypui-compile = { path = "../ZephyraUI/zypui-compile" }
 
 # 背景照片的解码器。材质 / 液态玻璃那页的背景板是一张真实照片，
 # 编译期内嵌 JPEG、运行时解成 RGBA8 上传 GPU（见 `src/bin/main.rs`）。

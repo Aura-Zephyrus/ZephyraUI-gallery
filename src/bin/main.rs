@@ -41,6 +41,8 @@ use zephyra_gallery::app::{resolve_route, Gallery, MOUNTAIN_TEXTURE, REF_FAMILIE
 // 所以它的 gate 是「有没有窗口路」，而不是「哪个后端」。
 // `install()` 同时被 CPU 那几条路（`--bench` / `--dump-cpu`）调用，而那些路
 // 不开 cfg ⇒ `Styler` 必须无条件导入。
+#[cfg(debug_assertions)]
+use zephyra_core::node::Node;
 use zephyra_core::styler::Styler;
 use zephyra_style::ir::StyleSheet;
 use zephyra_style::SheetStyler;
@@ -309,6 +311,47 @@ fn run_multi_window_path(want_light: bool) {
                 .expect("主窗口的宿主类型是 HostWindow<Gallery>");
             register_mountain(app);
             app.set_styler(install(build_sheet()));
+            // dev 资源热重载：替换成可换表的 Styler，并装每帧轮询的重载器。
+            // release 里这一整块不存在（cfg 剔除），仍是不可变的一次性加载。
+            #[cfg(debug_assertions)]
+            {
+                let sheet = Arc::new(build_sheet_from_disk());
+                let (styler, handle) =
+                    zephyra_fx::dev_reload::reloadable_styler(Arc::new(move |root: &mut Node| {
+                        SheetStyler::new(sheet.clone()).apply(root)
+                    }));
+                app.set_styler(Box::new(styler));
+
+                let roots = zephyra_fx::dev_reload::assets_from_env();
+                app.set_dev_reloader(zephyra_fx::dev_reload::DevReloader::new(
+                    &roots,
+                    move |paths| {
+                        if paths
+                            .iter()
+                            .any(|p| p.extension().and_then(|s| s.to_str()) == Some("zstyle"))
+                        {
+                            let next = Arc::new(build_sheet_from_disk());
+                            handle.set(Arc::new(move |root: &mut Node| {
+                                SheetStyler::new(next.clone()).apply(root)
+                            }));
+                            eprintln!("[zephyra-dev] .zstyle reloaded (app sheets)");
+                        }
+                        if paths
+                            .iter()
+                            .any(|p| p.extension().and_then(|s| s.to_str()) == Some("zypui"))
+                        {
+                            match zephyra_gallery::ui::reload_from_sources() {
+                                Ok(()) => {
+                                    eprintln!("[zephyra-dev] .zypui reloaded: shell.zypui")
+                                }
+                                Err(e) => {
+                                    eprintln!("[zephyra-dev] .zypui reload failed: {e}")
+                                }
+                            }
+                        }
+                    },
+                ));
+            }
             let _ = app.apply_window_chrome(zephyra_platform::WindowChrome {
                 dark: true,
                 corner: zephyra_platform::CornerPreference::Round,
@@ -448,6 +491,35 @@ fn build_sheet() -> StyleSheet {
 /// 把整份样式表装成宿主的样式注入点。
 fn install(sheet: StyleSheet) -> Box<dyn Styler> {
     Box::new(SheetStyler::new(std::sync::Arc::new(sheet)))
+}
+
+/// dev 热重载用：控件层沿用编译期内嵌，应用层从磁盘重读（改完立即生效）。
+#[cfg(debug_assertions)]
+fn build_sheet_from_disk() -> StyleSheet {
+    let mut sheet = StyleSheet::new();
+    for (name, css) in zephyra_ui::STYLESHEETS {
+        let result = zstyle_compile::parse(name, css);
+        if result.is_ok() {
+            sheet = sheet.merge(result.sheet);
+        }
+    }
+    for name in ["shell", "pages"] {
+        let file = format!("{}/frontend/{name}.zstyle", env!("CARGO_MANIFEST_DIR"));
+        let Ok(src) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let name: &'static str = Box::leak(name.to_string().into_boxed_str());
+        let result = zstyle_compile::parse(name, &src);
+        if result.is_ok() {
+            sheet = sheet.merge(result.sheet);
+        } else {
+            eprintln!(
+                "[zephyra-dev] {name}.zstyle reload failed: {:?}",
+                result.errors
+            );
+        }
+    }
+    sheet
 }
 
 /// 分阶段计时 + 分配探针。
