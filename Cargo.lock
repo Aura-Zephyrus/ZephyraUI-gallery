@@ -2242,6 +2242,7 @@ dependencies = [
  "zephyra-bezier",
  "zephyra-core",
  "zephyra-fx",
+ "zephyra-style",
 ]
 
 [[package]]

@@ -27,7 +27,7 @@ use zephyra_fx::{InputState, PointerInputPhase, View};
 
 pub mod data;
 pub mod glass;
-pub mod motion;
+pub use zephyra_ui::motion;
 pub mod pages;
 pub mod shell;
 
@@ -1940,11 +1940,7 @@ impl Gallery {
     }
 
     fn pressed_set(state: &InputState) -> Vec<ElementKey> {
-        if state.pressed_keys.is_empty() {
-            state.pressed.iter().cloned().collect()
-        } else {
-            state.pressed_keys.clone()
-        }
+        state.pressed_set()
     }
 
     /// 应用一次 click（按下与抬起落在同一 key 上）。
@@ -2533,16 +2529,11 @@ impl View for Gallery {
         // ⚠ 多指：判据用**集合差**（上帧按着的 − 这帧按着的），
         // 而不是「上帧那一个」。两指各按一个控件时，先抬的那个**也要**算
         // 一次点击 —— 否则「先抬的那根手指点了它」这件事就丢了。
-        let click_keys: Vec<String> = if state.cancelled {
-            Vec::new()
-        } else {
-            let now = Gallery::pressed_set(state);
-            self.last_pressed_keys
-                .iter()
-                .filter(|k| !now.contains(k))
-                .map(|k| k.as_name().unwrap_or_default().to_string())
-                .collect()
-        };
+        let click_keys: Vec<String> = state
+            .clicks_from(&self.last_pressed_keys)
+            .iter()
+            .map(|k| k.as_name().unwrap_or_default().to_string())
+            .collect();
         for key in click_keys {
             self.click(&key);
         }
