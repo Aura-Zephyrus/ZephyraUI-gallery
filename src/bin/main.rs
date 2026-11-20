@@ -33,9 +33,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use zephyra_core::theme::ThemeVariant;
-use zephyra_gallery::app::{
-    resolve_route, Gallery, MOUNTAIN_TEXTURE, REF_FAMILIES, ROUTES, SUPPORTED,
-};
+#[cfg(debug_assertions)]
+use zephyra_gallery::app::ROUTES;
+use zephyra_gallery::app::{resolve_route, Gallery, MOUNTAIN_TEXTURE, REF_FAMILIES, SUPPORTED};
 
 // `Styler` 只给 `HostWindow::set_styler` 用，与宿主是哪个后端无关 ——
 // 所以它的 gate 是「有没有窗口路」，而不是「哪个后端」。
@@ -63,9 +63,11 @@ fn intent_cell(dark: bool) -> Arc<AtomicU8> {
 ///     把源码**复制**一份进来：那样 lib 与 bin 各有一份实现，而它们抢同一个
 ///     全局分配器槽位 —— 实测 `E0759 conflicts with global allocator`，
 ///     且症状（"probe 计数翻倍"）只在同时走两条路时显形。
+#[cfg(debug_assertions)]
 #[global_allocator]
 static ALLOC: zephyra_gallery::alloc_probe::Counting = zephyra_gallery::alloc_probe::Counting;
 
+#[cfg(debug_assertions)]
 use zephyra_gallery::alloc_probe;
 
 fn main() {
@@ -98,11 +100,13 @@ fn main() {
         return;
     }
 
+    #[cfg(debug_assertions)]
     if args.iter().any(|a| a == "--bench") {
         bench_cpu(args.iter().any(|a| a == "--alloc-probe"), want_light);
         return;
     }
 
+    #[cfg(debug_assertions)]
     if args.iter().any(|a| a == "--bench-resize") {
         // resize 路径单独一个模式：现有 --bench 测的是稳态（layout 根本不跑），
         // 那一组数字对「拖窗口边慢不慢」一个字都说不出。
@@ -110,6 +114,7 @@ fn main() {
         return;
     }
 
+    #[cfg(debug_assertions)]
     if args.iter().any(|a| a == "--dump-cpu") {
         dump_cpu(want_light);
         return;
@@ -449,6 +454,7 @@ fn install(sheet: StyleSheet) -> Box<dyn Styler> {
 ///
 /// bench 的价值全在**可比**：改动时别把「测的东西」换掉 ——
 /// 换掉的不是数字不可比，是这个数字不再说明任何事。
+#[cfg(debug_assertions)]
 fn bench_cpu(probe: bool, light: bool) {
     /// 参与统计的帧数。
     const FRAMES: usize = 120;
@@ -648,6 +654,7 @@ fn apply_forced_language(args: &[String], view: &mut Gallery) {
 ///
 /// 中位数。resize 的耗时分布是**双峰**的（一半高度变化几乎免费、一半宽度变化
 /// 全量重排），平均值会把两件事抹平。
+#[cfg(debug_assertions)]
 fn bench_resize(probe: bool, light: bool) {
     /// 参与统计的帧数。
     const FRAMES: usize = 120;
@@ -764,6 +771,7 @@ fn bench_resize(probe: bool, light: bool) {
     println!("[resize] 全部为 {FRAMES} 帧（丢弃开头 {WARMUP} 帧）的**中位数**；resize 的耗时分布是双峰的，平均值会把两件事抹平。");
 }
 
+#[cfg(debug_assertions)]
 fn dump_cpu(light: bool) {
     let args: Vec<String> = std::env::args().collect();
     // `--route <id>`：dump 指定页（默认第一条路由）。逐页像素自验用 ——

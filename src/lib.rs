@@ -52,6 +52,7 @@
 /// 所以这里只放**类型与计数器**，注册由 `src/bin/main.rs` 那一行负责。
 /// 于是「探针」这个能力在库层可测，而全局状态只有一份。
 #[allow(unsafe_code)]
+#[cfg(debug_assertions)]
 pub mod alloc_probe;
 
 #[path = "../frontend/app/mod.rs"]
