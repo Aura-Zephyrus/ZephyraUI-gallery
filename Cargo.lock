@@ -2257,7 +2257,7 @@ dependencies = [
 [[package]]
 name = "zephyra-vector"
 version = "0.1.0"
-source = "git+https://github.com/Aura-Zephyrus/zephyra-vector.git?branch=main#0fc386933e0df1b7fd842d006c358a9e94c2bccb"
+source = "git+https://github.com/Aura-Zephyrus/zephyra-vector.git?branch=main#dbb49e81da7735d5524c2a388aabe7abac4be183"
 dependencies = [
  "ab_glyph",
  "bytemuck",
